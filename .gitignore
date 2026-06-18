@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 __pycache__
+data/api-clients.json
 *.local
 .env
 
