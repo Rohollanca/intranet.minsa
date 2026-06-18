@@ -19,6 +19,13 @@ MEDICAL_API_BASE_URL=https://TU-BACKEND-MEDICO-PUBLICO
 BOT_FILES_BASE_URL=https://TU-SERVIDOR-DE-ARCHIVOS-PUBLICO
 ```
 
+Valores actuales usados para este despliegue:
+
+```txt
+MEDICAL_API_BASE_URL=https://intranet-api.alisadata.lat
+BOT_FILES_BASE_URL=https://intranet-files.alisadata.lat
+```
+
 ## Importante
 
 `MEDICAL_API_BASE_URL` debe apuntar a la API que atiende:

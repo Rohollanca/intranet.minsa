@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const distDir = join(__dirname, 'dist');
 const port = Number(process.env.PORT || 10000);
-const medicalApiBaseUrl = (process.env.MEDICAL_API_BASE_URL || 'http://127.0.0.1:5055').replace(/\/$/, '');
-const botFilesBaseUrl = (process.env.BOT_FILES_BASE_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
+const medicalApiBaseUrl = (process.env.MEDICAL_API_BASE_URL || 'https://intranet-api.alisadata.lat').replace(/\/$/, '');
+const botFilesBaseUrl = (process.env.BOT_FILES_BASE_URL || 'https://intranet-files.alisadata.lat').replace(/\/$/, '');
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',

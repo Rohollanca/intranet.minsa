@@ -12,6 +12,6 @@ services:
       - key: VITE_VERIFICATION_BASE_URL
         value: https://portalwebminsa-certificados.onrender.com
       - key: MEDICAL_API_BASE_URL
-        sync: false
+        value: https://intranet-api.alisadata.lat
       - key: BOT_FILES_BASE_URL
-        sync: false
+        value: https://intranet-files.alisadata.lat
