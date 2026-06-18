@@ -11,6 +11,11 @@ import ImageModule from 'docxtemplater-image-module-free/js/index.js';
 
 const VERIFICATION_BASE_URL = (import.meta.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
 const initialHospital = hospitalesMinsa[Math.floor(Math.random() * hospitalesMinsa.length)] || {};
+const MEDICO_LOGIN = {
+  usuario: 'rvivas',
+  clave: '090558',
+  nombre: 'RUZ VIVAS, NILIBETH LORIANNY',
+};
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('sistema-medico-auth') === 'true');
@@ -550,11 +555,14 @@ const App = () => {
 
   const handleLogin = (event) => {
     event.preventDefault();
-    if (!loginForm.usuario.trim() || !loginForm.clave.trim()) {
-      setLoginError('Ingrese usuario y clave institucional');
+    const usuario = loginForm.usuario.trim().toLowerCase();
+    const clave = loginForm.clave.trim();
+    if (usuario !== MEDICO_LOGIN.usuario || clave !== MEDICO_LOGIN.clave) {
+      setLoginError('Credenciales institucionales no válidas');
       return;
     }
     localStorage.setItem('sistema-medico-auth', 'true');
+    localStorage.setItem('sistema-medico-user', MEDICO_LOGIN.nombre);
     setIsBooting(true);
     setUserMenuOpen(false);
     setLoginError('');
@@ -562,6 +570,7 @@ const App = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('sistema-medico-auth');
+    localStorage.removeItem('sistema-medico-user');
     setIsAuthenticated(false);
     setIsBooting(false);
     setUserMenuOpen(false);
