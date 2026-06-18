@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: intranet-general-minsa
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: VITE_VERIFICATION_BASE_URL
+        value: https://portalwebminsa-certificados.onrender.com
+      - key: MEDICAL_API_BASE_URL
+        sync: false
+      - key: BOT_FILES_BASE_URL
+        sync: false
