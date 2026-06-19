@@ -10,9 +10,9 @@ import { formatDate, getTotalQuantity } from './lib/documentFormatters';
 const VERIFICATION_BASE_URL = (import.meta.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
 const initialHospital = hospitalesMinsa[Math.floor(Math.random() * hospitalesMinsa.length)] || {};
 const MEDICO_LOGIN = {
-  usuario: 'rvivas',
-  clave: '090558',
-  nombre: 'RUZ VIVAS, NILIBETH LORIANNY',
+  usuario: import.meta.env.VITE_MEDICO_USUARIO || 'demo@example.com',
+  clave: import.meta.env.VITE_MEDICO_CLAVE || '',
+  nombre: import.meta.env.VITE_MEDICO_NOMBRE || 'MEDICO DEMO',
 };
 
 const App = () => {
@@ -40,8 +40,8 @@ const App = () => {
   const [formData, setFormData] = useState({
     establecimiento: initialHospital.nombre || '',
     servicio: 'EMERGENCIA',
-    profesional: 'RUZ VIVAS, NILIBETH LORIANNY',
-    cmp: '090558',
+    profesional: import.meta.env.VITE_MEDICO_NOMBRE || 'MEDICO DEMO',
+    cmp: import.meta.env.VITE_MEDICO_CMP || '000000',
     cie: null,
     dias: 3,
     fechaInicio: new Date().toISOString().split('T')[0],
@@ -302,6 +302,10 @@ const App = () => {
     event.preventDefault();
     const usuario = loginForm.usuario.trim().toLowerCase();
     const clave = loginForm.clave.trim();
+    if (!MEDICO_LOGIN.clave) {
+      setLoginError('Credenciales institucionales no configuradas');
+      return;
+    }
     if (usuario !== MEDICO_LOGIN.usuario || clave !== MEDICO_LOGIN.clave) {
       setLoginError('Credenciales institucionales no válidas');
       return;

@@ -15,10 +15,12 @@ const botFilesBaseUrl = (process.env.BOT_FILES_BASE_URL || 'https://intranet-fil
 const verificationBaseUrl = (process.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
 const apiClientsPath = process.env.API_CLIENTS_PATH || join(__dirname, 'data', 'api-clients.json');
 const apiUsageLogPath = process.env.API_USAGE_LOG_PATH || join(__dirname, 'data', 'api-usage.log');
-const defaultApiKey = process.env.API_DEFAULT_KEY || 'sk_live_minsa_Q7v4N9p2K8r6T3x5H1m0D9s4';
+const defaultApiKey = process.env.API_DEFAULT_KEY || '';
 const defaultDailyCredits = Number(process.env.API_DAILY_CREDITS || 50);
 const apiRateLimitPerMinute = Number(process.env.API_RATE_LIMIT_PER_MINUTE || 60);
 const adminToken = process.env.API_ADMIN_TOKEN || '';
+const defaultMedicalProfessional = process.env.API_DEFAULT_MEDICO_NOMBRE || 'MEDICO DEMO';
+const defaultMedicalCmp = process.env.API_DEFAULT_MEDICO_CMP || '000000';
 const rateLimitBuckets = new Map();
 const apiDocumentsEnabled = process.env.API_ENABLE_DOCUMENT_GENERATION === 'true';
 
@@ -250,7 +252,7 @@ const apiSafeEqual = (left, right) => {
 const apiDefaultStore = () => ({
   plans: defaultApiPlans,
   subscriptions: [],
-  clients: [
+  clients: defaultApiKey ? [
     {
       id: 'cli_demo',
       name: 'medico-demo',
@@ -264,7 +266,7 @@ const apiDefaultStore = () => ({
       permissions: ['saldo', 'consulta_demo', 'pacientes', 'consultas'],
       createdAt: new Date().toISOString(),
     },
-  ],
+  ] : [],
 });
 
 const apiSaveStore = (data) => {
@@ -302,10 +304,6 @@ const apiLoadStore = () => {
     }
     if (client.remainingCredits === undefined) {
       client.remainingCredits = Number(client.dailyCredits || defaultDailyCredits);
-      changed = true;
-    }
-    if (client.name === 'medico-demo' && client.apiKey === 'sk_medico_090558') {
-      client.apiKey = defaultApiKey;
       changed = true;
     }
     if (!client.apiKeyHash && client.apiKey) {
@@ -523,8 +521,8 @@ const apiBuildDocumentInput = (body, documentIdFromRoute) => {
   const formData = {
     establecimiento: receivedForm.establecimiento || body.establecimiento || '',
     servicio: receivedForm.servicio || body.servicio || 'EMERGENCIA',
-    profesional: receivedForm.profesional || body.profesional || 'RUZ VIVAS, NILIBETH LORIANNY',
-    cmp: receivedForm.cmp || body.cmp || '090558',
+    profesional: receivedForm.profesional || body.profesional || defaultMedicalProfessional,
+    cmp: receivedForm.cmp || body.cmp || defaultMedicalCmp,
     cie: receivedForm.cie || body.cie || body.cie10 || null,
     dias: receivedForm.dias || body.dias || 3,
     fechaInicio: receivedForm.fechaInicio || receivedForm.fecha_inicio || body.fechaInicio || body.fecha_inicio || new Date().toISOString().split('T')[0],

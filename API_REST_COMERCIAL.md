@@ -80,7 +80,7 @@ Cuando se habilita, la API:
 ### cURL
 
 ```bash
-curl -H "Authorization: Bearer sk_live_DEL_CLIENTE" \
+curl -H "Authorization: Bearer YOUR_API_KEY" \
   https://intranet-portalwebminsa.onrender.com/api/v1/saldo
 ```
 
@@ -88,7 +88,7 @@ curl -H "Authorization: Bearer sk_live_DEL_CLIENTE" \
 
 ```js
 const res = await fetch('https://intranet-portalwebminsa.onrender.com/api/v1/saldo', {
-  headers: { Authorization: 'Bearer sk_live_DEL_CLIENTE' },
+  headers: { Authorization: 'Bearer YOUR_API_KEY' },
 });
 const data = await res.json();
 console.log(data);
@@ -98,7 +98,7 @@ console.log(data);
 
 ```php
 $ch = curl_init('https://intranet-portalwebminsa.onrender.com/api/v1/saldo');
-curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: Bearer sk_live_DEL_CLIENTE']);
+curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: Bearer YOUR_API_KEY']);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 echo curl_exec($ch);
 curl_close($ch);
@@ -111,7 +111,7 @@ import requests
 
 res = requests.get(
     "https://intranet-portalwebminsa.onrender.com/api/v1/saldo",
-    headers={"Authorization": "Bearer sk_live_DEL_CLIENTE"},
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
     timeout=30,
 )
 print(res.json())
@@ -130,7 +130,7 @@ npm start
 Variables recomendadas:
 
 ```txt
-API_ADMIN_TOKEN=token_largo_privado
+API_ADMIN_TOKEN=YOUR_ADMIN_TOKEN
 API_DAILY_CREDITS=50
 API_RATE_LIMIT_PER_MINUTE=60
 API_ENABLE_DOCUMENT_GENERATION=false

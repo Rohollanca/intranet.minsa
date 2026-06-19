@@ -25,8 +25,8 @@ const fixture = {
   formData: {
     establecimiento: 'HOSPITAL LA CALETA',
     servicio: 'EMERGENCIA',
-    profesional: 'RUZ VIVAS, NILIBETH LORIANNY',
-    cmp: '090558',
+    profesional: 'MEDICO DEMO',
+    cmp: '000000',
     cie: { codigoCIE: 'A099', descripcionCIE: 'GASTROENTERITIS Y COLITIS DE ORIGEN NO ESPECIFICADO' },
     dias: 3,
     fechaInicio: '2026-06-16',
