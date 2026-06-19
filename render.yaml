@@ -15,3 +15,7 @@ services:
         value: https://intranet-api.alisadata.lat
       - key: BOT_FILES_BASE_URL
         value: https://intranet-files.alisadata.lat
+      - key: API_DAILY_CREDITS
+        value: 50
+      - key: API_RATE_LIMIT_PER_MINUTE
+        value: 60

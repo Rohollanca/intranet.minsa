@@ -12,6 +12,9 @@ dist
 dist-ssr
 __pycache__
 data/api-clients.json
+data/api-usage.log
+data/*.json
+data/*.log
 *.local
 .env
 
