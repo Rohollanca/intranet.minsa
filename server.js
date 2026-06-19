@@ -1,5 +1,5 @@
 import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { createServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
@@ -18,6 +18,14 @@ const defaultDailyCredits = Number(process.env.API_DAILY_CREDITS || 50);
 const apiRateLimitPerMinute = Number(process.env.API_RATE_LIMIT_PER_MINUTE || 60);
 const adminToken = process.env.API_ADMIN_TOKEN || '';
 const rateLimitBuckets = new Map();
+const apiDocumentsEnabled = process.env.API_ENABLE_DOCUMENT_GENERATION === 'true';
+
+const defaultApiPlans = [
+  { id: 'free', name: 'Plan gratuito', requestsPerMinute: 20, dailyCredits: 10, documentLimitDaily: 0, permissions: ['saldo', 'consulta_demo'] },
+  { id: 'basic', name: 'Plan basico', requestsPerMinute: 60, dailyCredits: 50, documentLimitDaily: 25, permissions: ['saldo', 'consulta_demo', 'pacientes', 'consultas'] },
+  { id: 'professional', name: 'Plan profesional', requestsPerMinute: 120, dailyCredits: 250, documentLimitDaily: 100, permissions: ['saldo', 'consulta_demo', 'pacientes', 'consultas', 'documentos'] },
+  { id: 'enterprise', name: 'Plan empresarial', requestsPerMinute: 300, dailyCredits: 1000, documentLimitDaily: 500, permissions: ['saldo', 'consulta_demo', 'pacientes', 'consultas', 'documentos', 'admin_integracion'] },
+];
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -227,6 +235,35 @@ const serveStatic = async (req, res) => {
 
 const apiCreateKey = () => `sk_live_${randomBytes(24).toString('base64url')}`;
 const apiCreateClientId = () => `cli_${randomBytes(8).toString('hex')}`;
+const apiHashKey = (apiKey) => createHash('sha256').update(String(apiKey)).digest('hex');
+const apiKeyPreview = (apiKey) => `${String(apiKey).slice(0, 12)}...${String(apiKey).slice(-4)}`;
+
+const apiSafeEqual = (left, right) => {
+  const leftBuffer = Buffer.from(String(left || ''), 'hex');
+  const rightBuffer = Buffer.from(String(right || ''), 'hex');
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return timingSafeEqual(leftBuffer, rightBuffer);
+};
+
+const apiDefaultStore = () => ({
+  plans: defaultApiPlans,
+  subscriptions: [],
+  clients: [
+    {
+      id: 'cli_demo',
+      name: 'medico-demo',
+      apiKey: defaultApiKey,
+      apiKeyPreview: apiKeyPreview(defaultApiKey),
+      planId: 'basic',
+      dailyCredits: defaultDailyCredits,
+      remainingCredits: defaultDailyCredits,
+      lastRecharge: getToday(),
+      active: true,
+      permissions: ['saldo', 'consulta_demo', 'pacientes', 'consultas'],
+      createdAt: new Date().toISOString(),
+    },
+  ],
+});
 
 const apiSaveStore = (data) => {
   mkdirSync(dirname(apiClientsPath), { recursive: true });
@@ -235,25 +272,13 @@ const apiSaveStore = (data) => {
 
 const apiLoadStore = () => {
   if (!existsSync(apiClientsPath)) {
-    const today = getToday();
-    apiSaveStore({
-      clients: [
-        {
-          id: 'cli_demo',
-          name: 'medico-demo',
-          apiKey: defaultApiKey,
-          dailyCredits: defaultDailyCredits,
-          remainingCredits: defaultDailyCredits,
-          lastRecharge: today,
-          active: true,
-          createdAt: new Date().toISOString(),
-        },
-      ],
-    });
+    apiSaveStore(apiDefaultStore());
   }
 
   const data = JSON.parse(readFileSync(apiClientsPath, 'utf8'));
   if (!Array.isArray(data.clients)) data.clients = [];
+  if (!Array.isArray(data.plans)) data.plans = defaultApiPlans;
+  if (!Array.isArray(data.subscriptions)) data.subscriptions = [];
 
   let changed = false;
   for (const client of data.clients) {
@@ -279,6 +304,21 @@ const apiLoadStore = () => {
     }
     if (client.name === 'medico-demo' && client.apiKey === 'sk_medico_090558') {
       client.apiKey = defaultApiKey;
+      changed = true;
+    }
+    if (!client.apiKeyHash && client.apiKey) {
+      client.apiKeyHash = apiHashKey(client.apiKey);
+      client.apiKeyPreview = apiKeyPreview(client.apiKey);
+      if (client.name !== 'medico-demo') delete client.apiKey;
+      changed = true;
+    }
+    if (!client.planId) {
+      client.planId = 'basic';
+      changed = true;
+    }
+    if (!Array.isArray(client.permissions)) {
+      const plan = data.plans.find((item) => item.id === client.planId) || data.plans[0];
+      client.permissions = plan?.permissions || ['saldo'];
       changed = true;
     }
   }
@@ -326,6 +366,14 @@ const apiRechargeClient = (data, client) => {
   }
 };
 
+const apiGetPlan = (data, client) => data.plans.find((plan) => plan.id === client.planId) || data.plans.find((plan) => plan.id === 'basic') || defaultApiPlans[1];
+
+const apiHasPermission = (data, client, permission) => {
+  const plan = apiGetPlan(data, client);
+  const permissions = new Set([...(plan?.permissions || []), ...(client.permissions || [])]);
+  return permissions.has(permission);
+};
+
 const apiCheckRateLimit = (client) => {
   const minute = Math.floor(Date.now() / 60000);
   const key = `${client.id}:${minute}`;
@@ -338,7 +386,7 @@ const apiCheckRateLimit = (client) => {
     }
   }
 
-  return used <= apiRateLimitPerMinute;
+  return used <= Number(client.requestsPerMinute || apiRateLimitPerMinute);
 };
 
 const apiAuthorizeClient = (req) => {
@@ -346,10 +394,17 @@ const apiAuthorizeClient = (req) => {
   if (!apiKey) return { error: 'API key requerida', statusCode: 401 };
 
   const data = apiLoadStore();
-  const client = data.clients.find((item) => item.apiKey === apiKey);
+  const apiKeyHash = apiHashKey(apiKey);
+  const client = data.clients.find((item) => (
+    (item.apiKeyHash && apiSafeEqual(item.apiKeyHash, apiKeyHash))
+    || (item.apiKey && item.apiKey === apiKey)
+  ));
   if (!client || client.active === false) return { error: 'API key no autorizada', statusCode: 401 };
 
   apiRechargeClient(data, client);
+
+  const plan = apiGetPlan(data, client);
+  client.requestsPerMinute = Number(client.requestsPerMinute || plan?.requestsPerMinute || apiRateLimitPerMinute);
 
   if (!apiCheckRateLimit(client)) {
     return { error: 'Demasiadas solicitudes por minuto', statusCode: 429 };
@@ -380,15 +435,71 @@ const apiPublicClient = (client, includeKey = false) => ({
   id: client.id,
   name: client.name,
   active: client.active !== false,
+  planId: client.planId || 'basic',
+  permissions: client.permissions || [],
   dailyCredits: Number(client.dailyCredits || defaultDailyCredits),
   remainingCredits: Number(client.remainingCredits || 0),
   lastRecharge: client.lastRecharge,
   createdAt: client.createdAt,
+  apiKeyPreview: client.apiKeyPreview || (client.apiKey ? apiKeyPreview(client.apiKey) : undefined),
   ...(includeKey ? { apiKey: client.apiKey } : {}),
 });
 
+const apiOk = (data = {}, meta = {}) => ({ ok: true, data, meta });
+const apiFail = (code, message, details = undefined) => ({
+  ok: false,
+  error: { code, message, ...(details ? { details } : {}) },
+});
+
+const apiConsumeCredit = (data, client, amount = 1) => {
+  if (Number(client.remainingCredits || 0) < amount) return false;
+  client.remainingCredits = Number(client.remainingCredits || 0) - amount;
+  apiSaveStore(data);
+  return true;
+};
+
+const apiOpenApiDocument = () => ({
+  openapi: '3.0.3',
+  info: {
+    title: 'Intranet General del MINSA - API comercial',
+    version: '1.0.0',
+    description: 'API REST para integraciones autorizadas con control por API key, planes, creditos, logs y metricas.',
+  },
+  servers: [{ url: 'https://intranet-portalwebminsa.onrender.com' }],
+  components: {
+    securitySchemes: {
+      ApiKeyBearer: { type: 'http', scheme: 'bearer' },
+    },
+  },
+  security: [{ ApiKeyBearer: [] }],
+  paths: {
+    '/api/v1/health': { get: { summary: 'Estado del servicio' } },
+    '/api/v1/saldo': { get: { summary: 'Consultar saldo de creditos' } },
+    '/api/v1/pacientes': { post: { summary: 'Consultar o registrar datos de paciente autorizado' } },
+    '/api/v1/consultas': { post: { summary: 'Registrar una consulta autorizada' } },
+    '/api/v1/descansos': { post: { summary: 'Preparar solicitud de descanso medico autorizada' } },
+    '/api/v1/certificados': { post: { summary: 'Preparar solicitud de certificado medico autorizada' } },
+    '/api/v1/recetas': { post: { summary: 'Preparar solicitud de receta medica autorizada' } },
+    '/api/v1/documentos/generar': { post: { summary: 'Generar documento en entorno autorizado si esta habilitado' } },
+    '/api/v1/admin/clientes': { get: { summary: 'Listar clientes' }, post: { summary: 'Crear cliente y API key' } },
+    '/api/v1/admin/planes': { get: { summary: 'Listar planes comerciales' } },
+    '/api/v1/admin/metricas': { get: { summary: 'Metricas de uso' } },
+    '/api/v1/admin/uso': { get: { summary: 'Logs de auditoria' } },
+  },
+});
+
+const apiValidateRequired = (body, fields) => {
+  const missing = fields.filter((field) => body[field] === undefined || body[field] === null || body[field] === '');
+  return missing.length ? missing : null;
+};
+
 const handleApiV1Real = async (req, res) => {
+  const startedAt = Date.now();
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (req.method === 'GET' && url.pathname === '/api/v1/openapi.json') {
+    return sendJson(res, 200, apiOpenApiDocument());
+  }
 
   if (url.pathname === '/api/v1/health') {
     return sendJson(res, 200, {
@@ -410,6 +521,29 @@ const handleApiV1Real = async (req, res) => {
       });
     }
 
+    if (req.method === 'GET' && url.pathname === '/api/v1/admin/planes') {
+      return sendJson(res, 200, apiOk({
+        planes: data.plans,
+      }));
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/v1/admin/metricas') {
+      const eventos = apiReadUsage(1000);
+      const porEndpoint = {};
+      const porCliente = {};
+      for (const item of eventos) {
+        const endpoint = item.endpoint || item.event || 'desconocido';
+        porEndpoint[endpoint] = (porEndpoint[endpoint] || 0) + 1;
+        if (item.clientId) porCliente[item.clientId] = (porCliente[item.clientId] || 0) + 1;
+      }
+      return sendJson(res, 200, apiOk({
+        total_eventos: eventos.length,
+        por_endpoint: porEndpoint,
+        por_cliente: porCliente,
+        clientes_activos: data.clients.filter((item) => item.active !== false).length,
+      }));
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/v1/admin/clientes') {
       let body = {};
       try {
@@ -418,15 +552,20 @@ const handleApiV1Real = async (req, res) => {
         return sendJson(res, 400, { ok: false, error: 'JSON invalido' });
       }
 
-      const dailyCredits = Math.max(0, Number(body.dailyCredits || defaultDailyCredits));
+      const plan = data.plans.find((item) => item.id === body.planId) || data.plans.find((item) => item.id === 'basic') || defaultApiPlans[1];
+      const apiKey = apiCreateKey();
+      const dailyCredits = Math.max(0, Number(body.dailyCredits || plan.dailyCredits || defaultDailyCredits));
       const client = {
         id: apiCreateClientId(),
         name: String(body.name || `cliente-${data.clients.length + 1}`).trim(),
-        apiKey: apiCreateKey(),
+        apiKeyHash: apiHashKey(apiKey),
+        apiKeyPreview: apiKeyPreview(apiKey),
+        planId: plan.id,
         dailyCredits,
         remainingCredits: dailyCredits,
         lastRecharge: getToday(),
         active: true,
+        permissions: Array.isArray(body.permissions) ? body.permissions : plan.permissions,
         createdAt: new Date().toISOString(),
       };
 
@@ -441,7 +580,10 @@ const handleApiV1Real = async (req, res) => {
 
       return sendJson(res, 201, {
         ok: true,
-        cliente: apiPublicClient(client, true),
+        cliente: {
+          ...apiPublicClient(client),
+          apiKey,
+        },
       });
     }
 
@@ -459,6 +601,8 @@ const handleApiV1Real = async (req, res) => {
 
       if (body.name !== undefined) client.name = String(body.name).trim();
       if (body.active !== undefined) client.active = Boolean(body.active);
+      if (body.planId !== undefined && data.plans.some((plan) => plan.id === body.planId)) client.planId = body.planId;
+      if (Array.isArray(body.permissions)) client.permissions = body.permissions;
       if (body.dailyCredits !== undefined) client.dailyCredits = Math.max(0, Number(body.dailyCredits));
       if (body.remainingCredits !== undefined) client.remainingCredits = Math.max(0, Number(body.remainingCredits));
       apiSaveStore(data);
@@ -528,6 +672,16 @@ const handleApiV1Real = async (req, res) => {
   const { data, client } = auth;
 
   if (req.method === 'GET' && url.pathname === '/api/v1/saldo') {
+    apiAppendUsage({
+      event: 'request',
+      clientId: client.id,
+      clientName: client.name,
+      endpoint: url.pathname,
+      method: req.method,
+      ip: apiGetIp(req),
+      status: 200,
+      responseTimeMs: Date.now() - startedAt,
+    });
     return sendJson(res, 200, {
       ok: true,
       cliente_id: client.id,
@@ -536,6 +690,152 @@ const handleApiV1Real = async (req, res) => {
       creditos_restantes: Number(client.remainingCredits || 0),
       ultima_recarga: client.lastRecharge,
     });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/v1/pacientes') {
+    if (!apiHasPermission(data, client, 'pacientes')) {
+      return sendJson(res, 403, apiFail('PERMISSION_DENIED', 'El plan no permite consultar pacientes'));
+    }
+
+    let body = {};
+    try {
+      body = await readRequestBody(req);
+    } catch {
+      return sendJson(res, 400, apiFail('INVALID_JSON', 'JSON invalido'));
+    }
+
+    const missing = apiValidateRequired(body, ['dni']);
+    if (missing) return sendJson(res, 422, apiFail('VALIDATION_ERROR', 'Faltan campos requeridos', { missing }));
+    if (!/^\d{8}$/.test(String(body.dni))) return sendJson(res, 422, apiFail('VALIDATION_ERROR', 'El DNI debe tener 8 digitos'));
+
+    if (!apiConsumeCredit(data, client, 1)) {
+      return sendJson(res, 402, apiFail('NO_CREDITS', 'Sin creditos disponibles'));
+    }
+
+    const payload = {
+      dni: String(body.dni),
+      modo: body.modo || 'registro_autorizado',
+      mensaje: 'Solicitud de paciente registrada para integracion autorizada.',
+      creditos_restantes: Number(client.remainingCredits || 0),
+    };
+
+    apiAppendUsage({
+      event: 'request',
+      clientId: client.id,
+      clientName: client.name,
+      endpoint: url.pathname,
+      method: req.method,
+      ip: apiGetIp(req),
+      status: 200,
+      responseTimeMs: Date.now() - startedAt,
+    });
+    return sendJson(res, 200, apiOk(payload));
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/v1/consultas') {
+    if (!apiHasPermission(data, client, 'consultas')) {
+      return sendJson(res, 403, apiFail('PERMISSION_DENIED', 'El plan no permite registrar consultas'));
+    }
+
+    let body = {};
+    try {
+      body = await readRequestBody(req);
+    } catch {
+      return sendJson(res, 400, apiFail('INVALID_JSON', 'JSON invalido'));
+    }
+
+    const missing = apiValidateRequired(body, ['dni', 'tipo']);
+    if (missing) return sendJson(res, 422, apiFail('VALIDATION_ERROR', 'Faltan campos requeridos', { missing }));
+
+    if (!apiConsumeCredit(data, client, 1)) {
+      return sendJson(res, 402, apiFail('NO_CREDITS', 'Sin creditos disponibles'));
+    }
+
+    const consultaId = `con_${randomBytes(8).toString('hex')}`;
+    apiAppendUsage({
+      event: 'request',
+      clientId: client.id,
+      clientName: client.name,
+      endpoint: url.pathname,
+      method: req.method,
+      ip: apiGetIp(req),
+      status: 201,
+      responseTimeMs: Date.now() - startedAt,
+      request: { dni: body.dni, tipo: body.tipo },
+    });
+
+    return sendJson(res, 201, apiOk({
+      consulta_id: consultaId,
+      estado: 'registrada',
+      creditos_restantes: Number(client.remainingCredits || 0),
+    }));
+  }
+
+  const documentRoutes = {
+    '/api/v1/descansos': 'descanso',
+    '/api/v1/certificados': 'certificado',
+    '/api/v1/recetas': 'receta',
+    '/api/v1/documentos/generar': 'documento',
+  };
+
+  if (req.method === 'POST' && documentRoutes[url.pathname]) {
+    if (!apiHasPermission(data, client, 'documentos')) {
+      return sendJson(res, 403, apiFail('PERMISSION_DENIED', 'El plan no permite generacion de documentos'));
+    }
+
+    let body = {};
+    try {
+      body = await readRequestBody(req);
+    } catch {
+      return sendJson(res, 400, apiFail('INVALID_JSON', 'JSON invalido'));
+    }
+
+    const missing = apiValidateRequired(body, ['paciente', 'documento']);
+    if (url.pathname !== '/api/v1/documentos/generar' && !body.documento) body.documento = documentRoutes[url.pathname];
+    if (missing && url.pathname === '/api/v1/documentos/generar') {
+      return sendJson(res, 422, apiFail('VALIDATION_ERROR', 'Faltan campos requeridos', { missing }));
+    }
+
+    if (!apiDocumentsEnabled) {
+      apiAppendUsage({
+        event: 'document_generation_blocked',
+        clientId: client.id,
+        clientName: client.name,
+        endpoint: url.pathname,
+        method: req.method,
+        ip: apiGetIp(req),
+        status: 403,
+        responseTimeMs: Date.now() - startedAt,
+      });
+      return sendJson(res, 403, apiFail(
+        'DOCUMENT_GENERATION_DISABLED',
+        'La generacion de documentos por API esta deshabilitada. Habilitala solo para integraciones internas autorizadas con API_ENABLE_DOCUMENT_GENERATION=true.',
+      ));
+    }
+
+    if (!apiConsumeCredit(data, client, 1)) {
+      return sendJson(res, 402, apiFail('NO_CREDITS', 'Sin creditos disponibles'));
+    }
+
+    const documentId = `doc_${randomBytes(8).toString('hex')}`;
+    apiAppendUsage({
+      event: 'document_generation_requested',
+      clientId: client.id,
+      clientName: client.name,
+      endpoint: url.pathname,
+      method: req.method,
+      ip: apiGetIp(req),
+      status: 202,
+      responseTimeMs: Date.now() - startedAt,
+      request: { documento: body.documento, dni: body.paciente?.dni },
+    });
+
+    return sendJson(res, 202, apiOk({
+      documento_id: documentId,
+      estado: 'aceptado',
+      mensaje: 'Solicitud recibida para generacion autorizada.',
+      creditos_restantes: Number(client.remainingCredits || 0),
+    }));
   }
 
   if (req.method === 'POST' && url.pathname === '/api/v1/consulta-demo') {
@@ -585,10 +885,19 @@ const handleApiV1Real = async (req, res) => {
     error: 'Endpoint API no encontrado',
     endpoints: [
       'GET /api/v1/health',
+      'GET /api/v1/openapi.json',
       'GET /api/v1/saldo',
       'POST /api/v1/consulta-demo',
+      'POST /api/v1/pacientes',
+      'POST /api/v1/consultas',
+      'POST /api/v1/descansos',
+      'POST /api/v1/certificados',
+      'POST /api/v1/recetas',
+      'POST /api/v1/documentos/generar',
       'GET /api/v1/admin/clientes',
       'POST /api/v1/admin/clientes',
+      'GET /api/v1/admin/planes',
+      'GET /api/v1/admin/metricas',
       'PATCH /api/v1/admin/clientes/:id',
       'POST /api/v1/admin/clientes/:id/recargar',
       'GET /api/v1/admin/uso',
@@ -604,6 +913,17 @@ const server = createServer((req, res) => {
       medicalApiBaseUrl,
       botFilesBaseUrl,
     });
+  }
+
+  if (req.url === '/api/docs') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>API Docs</title><style>body{font-family:Arial,sans-serif;margin:40px;line-height:1.5;color:#1f2937}code,pre{background:#f3f4f6;padding:2px 6px;border-radius:4px}a{color:#005b96}</style></head><body><h1>Intranet General del MINSA - API REST</h1><p>Documentacion OpenAPI disponible en <a href="/api/v1/openapi.json">/api/v1/openapi.json</a>.</p><p>Autenticacion: <code>Authorization: Bearer API_KEY</code></p><pre>GET /api/v1/saldo
+POST /api/v1/pacientes
+POST /api/v1/consultas
+POST /api/v1/descansos
+POST /api/v1/certificados
+POST /api/v1/recetas
+POST /api/v1/documentos/generar</pre></body></html>`);
   }
 
   if (req.url.startsWith('/api/v1/')) {

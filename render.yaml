@@ -19,3 +19,5 @@ services:
         value: 50
       - key: API_RATE_LIMIT_PER_MINUTE
         value: 60
+      - key: API_ENABLE_DOCUMENT_GENERATION
+        value: false
