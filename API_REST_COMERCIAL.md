@@ -51,7 +51,9 @@ Administrador:
 
 ## Generacion de documentos
 
-Los endpoints de documentos existen, pero la generacion por API queda deshabilitada por defecto:
+Los endpoints de documentos reutilizan el mismo `documentService` que usa la web para crear el DOCX desde las plantillas oficiales y luego convierten ese DOCX usando el mismo servicio existente `convert-docx-to-pdf`.
+
+La generacion por API queda deshabilitada por defecto:
 
 ```txt
 API_ENABLE_DOCUMENT_GENERATION=false
@@ -64,6 +66,14 @@ API_ENABLE_DOCUMENT_GENERATION=true
 ```
 
 Esto se dejo asi para que la web siga funcionando y para evitar exponer emision documental a terceros sin control legal/operativo.
+
+Cuando se habilita, la API:
+
+1. Valida API key, plan y permiso `documentos`.
+2. Valida datos minimos del paciente y formulario.
+3. Usa `createOfficialDocument()` para generar el DOCX con las mismas plantillas de la web.
+4. Envia el DOCX al conversor existente.
+5. Devuelve `pdf_base64`, codigo de verificacion y creditos restantes.
 
 ## Ejemplos
 

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test:documents": "node scripts/regression-document-service.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "node server.js"

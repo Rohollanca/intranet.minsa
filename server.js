@@ -5,12 +5,14 @@ import { createServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createOfficialDocument } from './src/lib/documentService.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const distDir = join(__dirname, 'dist');
 const port = Number(process.env.PORT || 10000);
 const medicalApiBaseUrl = (process.env.MEDICAL_API_BASE_URL || 'https://intranet-api.alisadata.lat').replace(/\/$/, '');
 const botFilesBaseUrl = (process.env.BOT_FILES_BASE_URL || 'https://intranet-files.alisadata.lat').replace(/\/$/, '');
+const verificationBaseUrl = (process.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
 const apiClientsPath = process.env.API_CLIENTS_PATH || join(__dirname, 'data', 'api-clients.json');
 const apiUsageLogPath = process.env.API_USAGE_LOG_PATH || join(__dirname, 'data', 'api-usage.log');
 const defaultApiKey = process.env.API_DEFAULT_KEY || 'sk_live_minsa_Q7v4N9p2K8r6T3x5H1m0D9s4';
@@ -493,6 +495,82 @@ const apiValidateRequired = (body, fields) => {
   return missing.length ? missing : null;
 };
 
+const arrayBufferFromBuffer = (buffer) => buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+
+const apiLoadTemplateFromPublic = async (path) => {
+  const safePath = normalize(String(path || '').replace(/^[/\\]+/, ''));
+  const fullPath = join(__dirname, 'public', safePath);
+  if (!existsSync(fullPath)) return null;
+  const buffer = readFileSync(fullPath);
+  return { path, buffer: arrayBufferFromBuffer(buffer) };
+};
+
+const apiDocumentLabels = {
+  descanso: 'Descanso Médico',
+  certificado: 'Certificado Médico',
+  receta: 'Receta Médica',
+};
+
+const apiBuildDocumentInput = (body, documentIdFromRoute) => {
+  const documentId = documentIdFromRoute === 'documento'
+    ? String(body.documento || body.documentoId || '').toLowerCase()
+    : documentIdFromRoute;
+
+  const patient = body.patient || body.paciente || {};
+  const receivedForm = body.formData || body.form_data || body.datos || {};
+  const institucion = String(body.institucion || receivedForm.institucion || 'MINSA').toUpperCase() === 'ESSALUD' ? 'ESSALUD' : 'MINSA';
+
+  const formData = {
+    establecimiento: receivedForm.establecimiento || body.establecimiento || '',
+    servicio: receivedForm.servicio || body.servicio || 'EMERGENCIA',
+    profesional: receivedForm.profesional || body.profesional || 'RUZ VIVAS, NILIBETH LORIANNY',
+    cmp: receivedForm.cmp || body.cmp || '090558',
+    cie: receivedForm.cie || body.cie || body.cie10 || null,
+    dias: receivedForm.dias || body.dias || 3,
+    fechaInicio: receivedForm.fechaInicio || receivedForm.fecha_inicio || body.fechaInicio || body.fecha_inicio || new Date().toISOString().split('T')[0],
+    horaIngreso: receivedForm.horaIngreso || receivedForm.hora_ingreso || body.horaIngreso || body.hora_ingreso || '08:00',
+    obsCustom: receivedForm.obsCustom || receivedForm.observaciones || body.observaciones || '',
+    usarObsAuto: receivedForm.usarObsAuto ?? body.usarObsAuto ?? true,
+    farmacia: receivedForm.farmacia || body.farmacia || 'FARMACIA CENTRAL',
+    pi: receivedForm.pi || body.pi || patient.pi || '',
+    distrito: receivedForm.distrito || body.distrito || 'LIMA',
+    tipoAtencion: receivedForm.tipoAtencion || receivedForm.tipo_atencion || body.tipoAtencion || body.tipo_atencion || 'EMERGENCIA/URGENCIAS',
+    diasNoConsecutivos: receivedForm.diasNoConsecutivos || receivedForm.dias_no_consecutivos || body.diasNoConsecutivos || '0',
+    vigencia: receivedForm.vigencia || body.vigencia || new Date().toISOString().split('T')[0],
+    numeroOrden: receivedForm.numeroOrden || receivedForm.numero_orden || body.numeroOrden || body.numero_orden || '',
+    meds: receivedForm.meds || receivedForm.medicamentos || body.meds || body.medicamentos || [],
+  };
+
+  if (!Array.isArray(formData.meds) || !formData.meds.length) {
+    formData.meds = [{ nombre: '', concentracion: '', presentacion: '', cantidad: '', unidad: 'MG', via: 'ORAL', frecuencia: '', duracion: '', indicacion: '' }];
+  }
+
+  return {
+    patient,
+    formData,
+    selectedDoc: { id: documentId, label: apiDocumentLabels[documentId] || 'Documento de salud' },
+    institucion,
+  };
+};
+
+const apiConvertDocxToPdf = async (docxBuffer) => {
+  const form = new FormData();
+  const blob = new Blob([docxBuffer], {
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  });
+  form.append('file', blob, 'document.docx');
+
+  const response = await fetch(`${medicalApiBaseUrl}/convert-docx-to-pdf`, {
+    method: 'POST',
+    body: form,
+  });
+  const result = await response.json();
+  if (!response.ok || result.status !== 'success') {
+    throw new Error(result.detail || result.error || 'Fallo en la conversion nativa');
+  }
+  return result.pdf_base64;
+};
+
 const handleApiV1Real = async (req, res) => {
   const startedAt = Date.now();
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -790,9 +868,22 @@ const handleApiV1Real = async (req, res) => {
       return sendJson(res, 400, apiFail('INVALID_JSON', 'JSON invalido'));
     }
 
-    const missing = apiValidateRequired(body, ['paciente', 'documento']);
-    if (url.pathname !== '/api/v1/documentos/generar' && !body.documento) body.documento = documentRoutes[url.pathname];
-    if (missing && url.pathname === '/api/v1/documentos/generar') {
+    const documentIdFromRoute = documentRoutes[url.pathname];
+    if (url.pathname === '/api/v1/documentos/generar' && !body.documento && !body.documentoId) {
+      return sendJson(res, 422, apiFail('VALIDATION_ERROR', 'Faltan campos requeridos', { missing: ['documento'] }));
+    }
+
+    const documentInput = apiBuildDocumentInput(body, documentIdFromRoute);
+    if (!['descanso', 'certificado', 'receta'].includes(documentInput.selectedDoc.id)) {
+      return sendJson(res, 422, apiFail('VALIDATION_ERROR', 'Documento no soportado', { allowed: ['descanso', 'certificado', 'receta'] }));
+    }
+
+    const missing = [];
+    if (!documentInput.patient?.nombre) missing.push('paciente.nombre');
+    if (!documentInput.patient?.dni) missing.push('paciente.dni');
+    if (!documentInput.formData?.establecimiento) missing.push('formData.establecimiento');
+    if (documentInput.selectedDoc.id !== 'receta' && !documentInput.formData?.cie) missing.push('formData.cie');
+    if (missing.length) {
       return sendJson(res, 422, apiFail('VALIDATION_ERROR', 'Faltan campos requeridos', { missing }));
     }
 
@@ -813,10 +904,35 @@ const handleApiV1Real = async (req, res) => {
       ));
     }
 
-    if (!apiConsumeCredit(data, client, 1)) {
+    if (Number(client.remainingCredits || 0) < 1) {
       return sendJson(res, 402, apiFail('NO_CREDITS', 'Sin creditos disponibles'));
     }
 
+    let generated;
+    let pdfBase64;
+    try {
+      generated = await createOfficialDocument({
+        ...documentInput,
+        verificationBaseUrl,
+        loadTemplate: apiLoadTemplateFromPublic,
+        output: 'nodebuffer',
+      });
+      pdfBase64 = await apiConvertDocxToPdf(generated.docx);
+    } catch (error) {
+      apiAppendUsage({
+        event: 'document_generation_failed',
+        clientId: client.id,
+        clientName: client.name,
+        endpoint: url.pathname,
+        method: req.method,
+        ip: apiGetIp(req),
+        status: 500,
+        responseTimeMs: Date.now() - startedAt,
+      });
+      return sendJson(res, 500, apiFail('DOCUMENT_GENERATION_FAILED', 'No se pudo generar el documento solicitado'));
+    }
+
+    apiConsumeCredit(data, client, 1);
     const documentId = `doc_${randomBytes(8).toString('hex')}`;
     apiAppendUsage({
       event: 'document_generation_requested',
@@ -827,13 +943,17 @@ const handleApiV1Real = async (req, res) => {
       ip: apiGetIp(req),
       status: 202,
       responseTimeMs: Date.now() - startedAt,
-      request: { documento: body.documento, dni: body.paciente?.dni },
+      request: { documento: documentInput.selectedDoc.id, dni: documentInput.patient?.dni },
     });
 
-    return sendJson(res, 202, apiOk({
+    return sendJson(res, 200, apiOk({
       documento_id: documentId,
-      estado: 'aceptado',
-      mensaje: 'Solicitud recibida para generacion autorizada.',
+      estado: 'generado',
+      tipo: documentInput.selectedDoc.id,
+      codigo_verificacion: generated.generated.codigoVerificacion,
+      url_verificacion: generated.generated.verificationUrl,
+      template: generated.templatePath,
+      pdf_base64: pdfBase64,
       creditos_restantes: Number(client.remainingCredits || 0),
     }));
   }
