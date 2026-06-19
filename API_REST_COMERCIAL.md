@@ -130,11 +130,33 @@ npm start
 Variables recomendadas:
 
 ```txt
+DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DATABASE
+PGSSLMODE=require
 API_ADMIN_TOKEN=YOUR_ADMIN_TOKEN
+API_DEFAULT_KEY=YOUR_API_KEY
 API_DAILY_CREDITS=50
 API_RATE_LIMIT_PER_MINUTE=60
 API_ENABLE_DOCUMENT_GENERATION=false
 ```
+
+## PostgreSQL
+
+En produccion la API usa PostgreSQL para clientes, hashes de API keys, planes, creditos, rate limits y logs.
+
+1. Configura `DATABASE_URL` en Render.
+2. Ejecuta las migraciones:
+
+```bash
+npm run db:migrate
+```
+
+3. Si ya tenias datos locales en `data/api-clients.json` y `data/api-usage.log`, importalos:
+
+```bash
+npm run db:migrate:json
+```
+
+Si `DATABASE_URL` no existe, el servidor mantiene el modo local con archivos JSON para desarrollo.
 
 ## Migraciones
 

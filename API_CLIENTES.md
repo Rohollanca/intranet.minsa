@@ -13,10 +13,22 @@ La API usa llaves por cliente, creditos diarios, consumo por consulta y logs de 
 Configura estas variables en Render > Environment:
 
 ```txt
+DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DATABASE
+PGSSLMODE=require
 API_ADMIN_TOKEN=YOUR_ADMIN_TOKEN
+API_DEFAULT_KEY=YOUR_API_KEY
 API_DAILY_CREDITS=50
 API_RATE_LIMIT_PER_MINUTE=60
 ```
+
+Antes de vender acceso en produccion ejecuta:
+
+```bash
+npm run db:migrate
+npm run db:migrate:json
+```
+
+El segundo comando solo es necesario si quieres importar clientes/logs existentes desde `data/api-clients.json` y `data/api-usage.log`.
 
 Ejemplo de token admin fuerte:
 

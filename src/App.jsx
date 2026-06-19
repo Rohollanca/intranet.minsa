@@ -5,7 +5,7 @@ import { hospitalesEssalud } from './data/hospitales-essalud';
 import { pnumeRecetas } from './data/pnume-recetas';
 import { saveAs } from 'file-saver';
 import { createOfficialDocument } from './lib/documentService';
-import { formatDate, getTotalQuantity } from './lib/documentFormatters';
+import { generateActMed, generateAutogenerado, getTotalQuantity } from './lib/documentFormatters';
 
 const VERIFICATION_BASE_URL = (import.meta.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
 const initialHospital = hospitalesMinsa[Math.floor(Math.random() * hospitalesMinsa.length)] || {};
@@ -25,9 +25,9 @@ const App = () => {
   const [patient, setPatient] = useState(null);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [, setError] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
-  const [docxBlob, setDocxBlob] = useState(null);
+  const [, setDocxBlob] = useState(null);
   const [receptionSent, setReceptionSent] = useState(false);
   const [institucion, setInstitucion] = useState('MINSA');
   const [departamento, setDepartamento] = useState(initialHospital.departamento || '');
@@ -62,10 +62,6 @@ const App = () => {
   const defaultMed = { nombre: '', concentracion: '', presentacion: '', cantidad: '', unidad: 'MG', via: 'ORAL', frecuencia: '', duracion: '', indicacion: '' };
   const addMed = () => setFormData({...formData, meds: [...formData.meds, { ...defaultMed }]});
   const removeMed = (index) => setFormData({...formData, meds: formData.meds.filter((_, i) => i !== index)});
-  const updateMed = (index, field, value) => setFormData({
-    ...formData,
-    meds: formData.meds.map((med, i) => i === index ? {...med, [field]: value} : med)
-  });
   const medNames = useMemo(() => [...new Set(pnumeRecetas.map(item => item.medicamento))].sort((a, b) => a.localeCompare(b)), []);
   const uniqueValues = (values) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const catalogRowsFor = (med) => pnumeRecetas.filter(item => item.medicamento === String(med || '').toUpperCase());
@@ -251,7 +247,7 @@ const App = () => {
         } else { attempts++; setTimeout(poll, 1000); }
       };
       poll();
-    } catch (err) { setError('Error de conexión clínica'); setLoading(false); }
+    } catch { setError('Error de conexión clínica'); setLoading(false); }
   };
 
   const emitOfficialDocument = async (formatType) => {

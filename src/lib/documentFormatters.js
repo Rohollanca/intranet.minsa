@@ -15,7 +15,7 @@ export const formatLongDate = (dateString, includeWeekday = false) => {
 export const parseBirthDate = (value) => {
   const text = String(value || '').trim();
   if (!text) return null;
-  const match = text.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  const match = text.match(/(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})/);
   if (!match) return null;
   const [, day, month, year] = match;
   const date = new Date(Number(year), Number(month) - 1, Number(day));

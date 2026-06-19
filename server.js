@@ -6,6 +6,7 @@ import { request as httpsRequest } from 'node:https';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createOfficialDocument } from './src/lib/documentService.js';
+import { createApiStore } from './src/server/apiStore.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const distDir = join(__dirname, 'dist');
@@ -30,6 +31,15 @@ const defaultApiPlans = [
   { id: 'professional', name: 'Plan profesional', requestsPerMinute: 120, dailyCredits: 250, documentLimitDaily: 100, permissions: ['saldo', 'consulta_demo', 'pacientes', 'consultas', 'documentos'] },
   { id: 'enterprise', name: 'Plan empresarial', requestsPerMinute: 300, dailyCredits: 1000, documentLimitDaily: 500, permissions: ['saldo', 'consulta_demo', 'pacientes', 'consultas', 'documentos', 'admin_integracion'] },
 ];
+
+const apiStore = createApiStore({
+  databaseUrl: process.env.DATABASE_URL || '',
+  clientsPath: apiClientsPath,
+  usageLogPath: apiUsageLogPath,
+  defaultPlans: defaultApiPlans,
+  defaultStore: () => apiDefaultStore(),
+});
+const apiStoreReady = apiStore.initialize();
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -130,6 +140,8 @@ const consumeCredit = (data, client, amount = 1) => {
   return true;
 };
 
+// Handler legado conservado como compatibilidad local; la API activa usa handleApiV1Real.
+// eslint-disable-next-line no-unused-vars
 const handleApiV1 = async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const auth = getClientForRequest(req);
@@ -157,7 +169,7 @@ const handleApiV1 = async (req, res) => {
       return sendJson(res, 400, { ok: false, error: 'JSON inválido' });
     }
 
-    if (!consumeCredit(data, client, 1)) {
+    if (!await apiConsumeCredit(data, client, 1)) {
       return sendJson(res, 402, {
         ok: false,
         error: 'Sin créditos disponibles',
@@ -269,17 +281,13 @@ const apiDefaultStore = () => ({
   ] : [],
 });
 
-const apiSaveStore = (data) => {
-  mkdirSync(dirname(apiClientsPath), { recursive: true });
-  writeFileSync(apiClientsPath, JSON.stringify(data, null, 2));
+const apiSaveStore = async (data) => {
+  await apiStore.saveStore(data);
 };
 
-const apiLoadStore = () => {
-  if (!existsSync(apiClientsPath)) {
-    apiSaveStore(apiDefaultStore());
-  }
-
-  const data = JSON.parse(readFileSync(apiClientsPath, 'utf8'));
+const apiLoadStore = async () => {
+  await apiStoreReady;
+  const data = await apiStore.loadStore();
   if (!Array.isArray(data.clients)) data.clients = [];
   if (!Array.isArray(data.plans)) data.plans = defaultApiPlans;
   if (!Array.isArray(data.subscriptions)) data.subscriptions = [];
@@ -323,7 +331,7 @@ const apiLoadStore = () => {
     }
   }
 
-  if (changed) apiSaveStore(data);
+  if (changed) await apiSaveStore(data);
   return data;
 };
 
@@ -334,35 +342,21 @@ const apiGetIp = (req) => String(
   || '',
 ).split(',')[0].trim();
 
-const apiAppendUsage = (entry) => {
-  mkdirSync(dirname(apiUsageLogPath), { recursive: true });
-  writeFileSync(apiUsageLogPath, `${JSON.stringify({
-    ts: new Date().toISOString(),
-    ...entry,
-  })}\n`, { flag: 'a' });
+const apiAppendUsage = async (entry) => {
+  await apiStore.appendUsage(entry);
 };
 
-const apiReadUsage = (limit = 100) => {
-  if (!existsSync(apiUsageLogPath)) return [];
-  return readFileSync(apiUsageLogPath, 'utf8')
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .slice(-limit)
-    .map((line) => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return { raw: line };
-      }
-    });
+const apiReadUsage = async (limit = 100) => {
+  await apiStoreReady;
+  return apiStore.readUsage(limit);
 };
 
-const apiRechargeClient = (data, client) => {
+const apiRechargeClient = async (data, client) => {
   const today = getToday();
   if (client.lastRecharge !== today) {
     client.remainingCredits = Number(client.dailyCredits || defaultDailyCredits);
     client.lastRecharge = today;
-    apiSaveStore(data);
+    await apiSaveStore(data);
   }
 };
 
@@ -374,7 +368,11 @@ const apiHasPermission = (data, client, permission) => {
   return permissions.has(permission);
 };
 
-const apiCheckRateLimit = (client) => {
+const apiCheckRateLimit = async (client) => {
+  if (apiStore.type === 'postgres') {
+    return apiStore.checkRateLimit(client.id, client.requestsPerMinute || apiRateLimitPerMinute);
+  }
+
   const minute = Math.floor(Date.now() / 60000);
   const key = `${client.id}:${minute}`;
   const used = Number(rateLimitBuckets.get(key) || 0) + 1;
@@ -389,11 +387,11 @@ const apiCheckRateLimit = (client) => {
   return used <= Number(client.requestsPerMinute || apiRateLimitPerMinute);
 };
 
-const apiAuthorizeClient = (req) => {
+const apiAuthorizeClient = async (req) => {
   const apiKey = getApiKey(req);
   if (!apiKey) return { error: 'API key requerida', statusCode: 401 };
 
-  const data = apiLoadStore();
+  const data = await apiLoadStore();
   const apiKeyHash = apiHashKey(apiKey);
   const client = data.clients.find((item) => (
     (item.apiKeyHash && apiSafeEqual(item.apiKeyHash, apiKeyHash))
@@ -401,12 +399,12 @@ const apiAuthorizeClient = (req) => {
   ));
   if (!client || client.active === false) return { error: 'API key no autorizada', statusCode: 401 };
 
-  apiRechargeClient(data, client);
+  await apiRechargeClient(data, client);
 
   const plan = apiGetPlan(data, client);
   client.requestsPerMinute = Number(client.requestsPerMinute || plan?.requestsPerMinute || apiRateLimitPerMinute);
 
-  if (!apiCheckRateLimit(client)) {
+  if (!await apiCheckRateLimit(client)) {
     return { error: 'Demasiadas solicitudes por minuto', statusCode: 429 };
   }
 
@@ -451,10 +449,10 @@ const apiFail = (code, message, details = undefined) => ({
   error: { code, message, ...(details ? { details } : {}) },
 });
 
-const apiConsumeCredit = (data, client, amount = 1) => {
+const apiConsumeCredit = async (data, client, amount = 1) => {
   if (Number(client.remainingCredits || 0) < amount) return false;
   client.remainingCredits = Number(client.remainingCredits || 0) - amount;
-  apiSaveStore(data);
+  await apiSaveStore(data);
   return true;
 };
 
@@ -587,10 +585,10 @@ const handleApiV1Real = async (req, res) => {
 
   if (url.pathname.startsWith('/api/v1/admin/')) {
     if (!apiRequireAdmin(req, res)) return;
-    const data = apiLoadStore();
+    const data = await apiLoadStore();
 
     if (req.method === 'GET' && url.pathname === '/api/v1/admin/clientes') {
-      for (const client of data.clients) apiRechargeClient(data, client);
+      for (const client of data.clients) await apiRechargeClient(data, client);
       return sendJson(res, 200, {
         ok: true,
         clientes: data.clients.map((client) => apiPublicClient(client)),
@@ -604,7 +602,7 @@ const handleApiV1Real = async (req, res) => {
     }
 
     if (req.method === 'GET' && url.pathname === '/api/v1/admin/metricas') {
-      const eventos = apiReadUsage(1000);
+      const eventos = await apiReadUsage(1000);
       const porEndpoint = {};
       const porCliente = {};
       for (const item of eventos) {
@@ -646,8 +644,8 @@ const handleApiV1Real = async (req, res) => {
       };
 
       data.clients.push(client);
-      apiSaveStore(data);
-      apiAppendUsage({
+      await apiSaveStore(data);
+      await apiAppendUsage({
         event: 'admin_create_client',
         clientId: client.id,
         clientName: client.name,
@@ -681,8 +679,8 @@ const handleApiV1Real = async (req, res) => {
       if (Array.isArray(body.permissions)) client.permissions = body.permissions;
       if (body.dailyCredits !== undefined) client.dailyCredits = Math.max(0, Number(body.dailyCredits));
       if (body.remainingCredits !== undefined) client.remainingCredits = Math.max(0, Number(body.remainingCredits));
-      apiSaveStore(data);
-      apiAppendUsage({
+      await apiSaveStore(data);
+      await apiAppendUsage({
         event: 'admin_update_client',
         clientId: client.id,
         clientName: client.name,
@@ -713,8 +711,8 @@ const handleApiV1Real = async (req, res) => {
         ? Math.max(0, Number(client.remainingCredits || 0) + amount)
         : Math.max(0, amount);
       client.lastRecharge = getToday();
-      apiSaveStore(data);
-      apiAppendUsage({
+      await apiSaveStore(data);
+      await apiAppendUsage({
         event: 'admin_recharge_client',
         clientId: client.id,
         clientName: client.name,
@@ -733,14 +731,14 @@ const handleApiV1Real = async (req, res) => {
       const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit') || 100)));
       return sendJson(res, 200, {
         ok: true,
-        eventos: apiReadUsage(limit),
+        eventos: await apiReadUsage(limit),
       });
     }
 
     return sendJson(res, 404, { ok: false, error: 'Endpoint admin no encontrado' });
   }
 
-  const auth = apiAuthorizeClient(req);
+  const auth = await apiAuthorizeClient(req);
   if (auth.error) {
     return sendJson(res, auth.statusCode || 401, { ok: false, error: auth.error });
   }
@@ -748,7 +746,7 @@ const handleApiV1Real = async (req, res) => {
   const { data, client } = auth;
 
   if (req.method === 'GET' && url.pathname === '/api/v1/saldo') {
-    apiAppendUsage({
+    await apiAppendUsage({
       event: 'request',
       clientId: client.id,
       clientName: client.name,
@@ -784,7 +782,7 @@ const handleApiV1Real = async (req, res) => {
     if (missing) return sendJson(res, 422, apiFail('VALIDATION_ERROR', 'Faltan campos requeridos', { missing }));
     if (!/^\d{8}$/.test(String(body.dni))) return sendJson(res, 422, apiFail('VALIDATION_ERROR', 'El DNI debe tener 8 digitos'));
 
-    if (!apiConsumeCredit(data, client, 1)) {
+    if (!await apiConsumeCredit(data, client, 1)) {
       return sendJson(res, 402, apiFail('NO_CREDITS', 'Sin creditos disponibles'));
     }
 
@@ -795,7 +793,7 @@ const handleApiV1Real = async (req, res) => {
       creditos_restantes: Number(client.remainingCredits || 0),
     };
 
-    apiAppendUsage({
+    await apiAppendUsage({
       event: 'request',
       clientId: client.id,
       clientName: client.name,
@@ -823,12 +821,12 @@ const handleApiV1Real = async (req, res) => {
     const missing = apiValidateRequired(body, ['dni', 'tipo']);
     if (missing) return sendJson(res, 422, apiFail('VALIDATION_ERROR', 'Faltan campos requeridos', { missing }));
 
-    if (!apiConsumeCredit(data, client, 1)) {
+    if (!await apiConsumeCredit(data, client, 1)) {
       return sendJson(res, 402, apiFail('NO_CREDITS', 'Sin creditos disponibles'));
     }
 
     const consultaId = `con_${randomBytes(8).toString('hex')}`;
-    apiAppendUsage({
+    await apiAppendUsage({
       event: 'request',
       clientId: client.id,
       clientName: client.name,
@@ -886,7 +884,7 @@ const handleApiV1Real = async (req, res) => {
     }
 
     if (!apiDocumentsEnabled) {
-      apiAppendUsage({
+      await apiAppendUsage({
         event: 'document_generation_blocked',
         clientId: client.id,
         clientName: client.name,
@@ -916,8 +914,8 @@ const handleApiV1Real = async (req, res) => {
         output: 'nodebuffer',
       });
       pdfBase64 = await apiConvertDocxToPdf(generated.docx);
-    } catch (error) {
-      apiAppendUsage({
+    } catch {
+      await apiAppendUsage({
         event: 'document_generation_failed',
         clientId: client.id,
         clientName: client.name,
@@ -930,9 +928,9 @@ const handleApiV1Real = async (req, res) => {
       return sendJson(res, 500, apiFail('DOCUMENT_GENERATION_FAILED', 'No se pudo generar el documento solicitado'));
     }
 
-    apiConsumeCredit(data, client, 1);
+    await apiConsumeCredit(data, client, 1);
     const documentId = `doc_${randomBytes(8).toString('hex')}`;
-    apiAppendUsage({
+    await apiAppendUsage({
       event: 'document_generation_requested',
       clientId: client.id,
       clientName: client.name,
@@ -965,7 +963,7 @@ const handleApiV1Real = async (req, res) => {
     }
 
     if (!consumeCredit(data, client, 1)) {
-      apiAppendUsage({
+      await apiAppendUsage({
         event: 'credit_denied',
         clientId: client.id,
         clientName: client.name,
@@ -979,7 +977,7 @@ const handleApiV1Real = async (req, res) => {
       });
     }
 
-    apiAppendUsage({
+    await apiAppendUsage({
       event: 'credit_consumed',
       clientId: client.id,
       clientName: client.name,
