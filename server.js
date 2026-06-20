@@ -15,8 +15,8 @@ const botFilesBaseUrl = (process.env.BOT_FILES_BASE_URL || 'https://intranet-fil
 const verificationBaseUrl = (process.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
 const apiSharedKey = process.env.API_SHARED_KEY || '';
 const apiUsageLogPath = process.env.API_USAGE_LOG_PATH || join(__dirname, 'data', 'api-usage.log');
-const defaultMedicalProfessional = process.env.API_DEFAULT_MEDICO_NOMBRE || '';
-const defaultMedicalCmp = process.env.API_DEFAULT_MEDICO_CMP || '';
+const defaultMedicalProfessional = 'RUZ VIVAS, NILIBETH LORIANNY';
+const defaultMedicalCmp = '090558';
 const apiDocumentsEnabled = process.env.API_ENABLE_DOCUMENT_GENERATION === 'true';
 const apiDemoEndpointsEnabled = process.env.API_ENABLE_DEMO_ENDPOINTS === 'true';
 

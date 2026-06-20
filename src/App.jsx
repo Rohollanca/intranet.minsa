@@ -9,23 +9,25 @@ import { generateActMed, generateAutogenerado, getTotalQuantity } from './lib/do
 
 const VERIFICATION_BASE_URL = (import.meta.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
 const initialHospital = hospitalesMinsa[Math.floor(Math.random() * hospitalesMinsa.length)] || {};
-const requiredMedicoEnv = {
+const FIXED_MEDICO = {
+  nombre: 'RUZ VIVAS, NILIBETH LORIANNY',
+  cmp: '090558',
+};
+const requiredLoginEnv = {
   VITE_MEDICO_USUARIO: import.meta.env.VITE_MEDICO_USUARIO,
   VITE_MEDICO_CLAVE: import.meta.env.VITE_MEDICO_CLAVE,
-  VITE_MEDICO_NOMBRE: import.meta.env.VITE_MEDICO_NOMBRE,
-  VITE_MEDICO_CMP: import.meta.env.VITE_MEDICO_CMP,
 };
-const missingMedicoEnv = Object.entries(requiredMedicoEnv)
+const missingLoginEnv = Object.entries(requiredLoginEnv)
   .filter(([, value]) => !String(value || '').trim())
   .map(([key]) => key);
-const medicoConfigError = missingMedicoEnv.length
-  ? `Configuración incompleta en Render. Faltan variables: ${missingMedicoEnv.join(', ')}. Configúralas y ejecuta un nuevo deploy/build.`
+const medicoConfigError = missingLoginEnv.length
+  ? `Configuración incompleta en Render. Faltan variables: ${missingLoginEnv.join(', ')}. Configúralas y ejecuta un nuevo deploy/build.`
   : '';
 const MEDICO_LOGIN = {
-  usuario: String(requiredMedicoEnv.VITE_MEDICO_USUARIO || '').trim().toLowerCase(),
-  clave: String(requiredMedicoEnv.VITE_MEDICO_CLAVE || '').trim(),
-  nombre: String(requiredMedicoEnv.VITE_MEDICO_NOMBRE || '').trim(),
-  cmp: String(requiredMedicoEnv.VITE_MEDICO_CMP || '').trim(),
+  usuario: String(requiredLoginEnv.VITE_MEDICO_USUARIO || '').trim().toLowerCase(),
+  clave: String(requiredLoginEnv.VITE_MEDICO_CLAVE || '').trim(),
+  nombre: FIXED_MEDICO.nombre,
+  cmp: FIXED_MEDICO.cmp,
 };
 
 if (medicoConfigError && typeof window !== 'undefined') {
