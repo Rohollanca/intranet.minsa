@@ -13,33 +13,18 @@ const FIXED_MEDICO = {
   nombre: 'RUZ VIVAS, NILIBETH LORIANNY',
   cmp: '090558',
 };
-const requiredLoginEnv = {
-  VITE_MEDICO_USUARIO: import.meta.env.VITE_MEDICO_USUARIO,
-  VITE_MEDICO_CLAVE: import.meta.env.VITE_MEDICO_CLAVE,
-};
-const missingLoginEnv = Object.entries(requiredLoginEnv)
-  .filter(([, value]) => !String(value || '').trim())
-  .map(([key]) => key);
-const medicoConfigError = missingLoginEnv.length
-  ? `Configuración incompleta en Render. Faltan variables: ${missingLoginEnv.join(', ')}. Configúralas y ejecuta un nuevo deploy/build.`
-  : '';
 const MEDICO_LOGIN = {
-  usuario: String(requiredLoginEnv.VITE_MEDICO_USUARIO || '').trim().toLowerCase(),
-  clave: String(requiredLoginEnv.VITE_MEDICO_CLAVE || '').trim(),
+  usuario: 'rvivas',
+  clave: '090558',
   nombre: FIXED_MEDICO.nombre,
   cmp: FIXED_MEDICO.cmp,
 };
 
-if (medicoConfigError && typeof window !== 'undefined') {
-  localStorage.removeItem('sistema-medico-auth');
-  localStorage.removeItem('sistema-medico-user');
-}
-
 const App = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => !medicoConfigError && localStorage.getItem('sistema-medico-auth') === 'true');
+  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('sistema-medico-auth') === 'true');
   const [isBooting, setIsBooting] = useState(false);
   const [loginForm, setLoginForm] = useState({ usuario: '', clave: '' });
-  const [loginError, setLoginError] = useState(medicoConfigError);
+  const [loginError, setLoginError] = useState('');
   const [view, setView] = useState('search');
   const [dni, setDni] = useState('');
   const [patient, setPatient] = useState(null);
@@ -318,12 +303,6 @@ const App = () => {
     event.preventDefault();
     const usuario = loginForm.usuario.trim().toLowerCase();
     const clave = loginForm.clave.trim();
-    if (medicoConfigError) {
-      localStorage.removeItem('sistema-medico-auth');
-      localStorage.removeItem('sistema-medico-user');
-      setLoginError(medicoConfigError);
-      return;
-    }
     if (usuario !== MEDICO_LOGIN.usuario || clave !== MEDICO_LOGIN.clave) {
       setLoginError('Credenciales institucionales no válidas');
       return;

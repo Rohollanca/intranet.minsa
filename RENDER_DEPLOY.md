@@ -21,8 +21,6 @@ API_SHARED_KEY=YOUR_API_KEY
 API_ENABLE_DOCUMENT_GENERATION=false
 API_ENABLE_DEMO_ENDPOINTS=false
 API_USAGE_LOG_PATH=/var/data/api-usage.log
-VITE_MEDICO_USUARIO=TU_USUARIO_MEDICO
-VITE_MEDICO_CLAVE=TU_CLAVE_MEDICO
 ```
 
 Valores actuales usados para este despliegue:
@@ -70,4 +68,11 @@ RUZ VIVAS, NILIBETH LORIANNY
 CMP: 090558
 ```
 
-No configures `VITE_MEDICO_NOMBRE` ni `VITE_MEDICO_CMP`; no son necesarias. Despues de cambiar `VITE_MEDICO_USUARIO` o `VITE_MEDICO_CLAVE` en Render, ejecuta un nuevo deploy/build porque Vite inserta esas variables durante el build del frontend.
+El login tambien esta fijo en el sistema:
+
+```txt
+Usuario: rvivas
+Clave: 090558
+```
+
+No configures variables `VITE_MEDICO_*`; no son necesarias para el medico ni para el login.

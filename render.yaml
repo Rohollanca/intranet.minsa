@@ -13,10 +13,6 @@ services:
         value: https://portalwebminsa-certificados.onrender.com
       - key: API_SHARED_KEY
         sync: false
-      - key: VITE_MEDICO_USUARIO
-        sync: false
-      - key: VITE_MEDICO_CLAVE
-        sync: false
       - key: MEDICAL_API_BASE_URL
         value: https://intranet-api.alisadata.lat
       - key: BOT_FILES_BASE_URL
