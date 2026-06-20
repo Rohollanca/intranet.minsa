@@ -1,171 +1,54 @@
-# API de clientes
+# Guia Simple De Uso De API
 
-Base:
+La API usa una sola clave global:
 
-```txt
-https://intranet-portalwebminsa.onrender.com
+```env
+API_SHARED_KEY=YOUR_API_KEY
 ```
 
-La API usa llaves por cliente, creditos diarios, consumo por consulta y logs de uso.
+Entrega esa clave solo a integraciones autorizadas. Todas las rutas privadas deben enviar:
 
-## Variables importantes en Render
-
-Configura estas variables en Render > Environment:
-
-```txt
-DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DATABASE
-PGSSLMODE=require
-API_ADMIN_TOKEN=YOUR_ADMIN_TOKEN
-API_DAILY_CREDITS=50
-API_RATE_LIMIT_PER_MINUTE=60
-API_ENABLE_DEMO_ENDPOINTS=false
+```http
+Authorization: Bearer YOUR_API_KEY
 ```
 
-Antes de vender acceso en produccion ejecuta:
+## Rutas Disponibles
+
+- `GET /api/v1/health`
+- `GET /api/v1/openapi.json`
+- `POST /api/v1/pacientes`
+- `POST /api/v1/consultas`
+- `POST /api/v1/descansos`
+- `POST /api/v1/certificados`
+- `POST /api/v1/recetas`
+- `POST /api/v1/documentos/generar`
+
+## Rutas Eliminadas
+
+Ya no existen:
+
+- `/api/v1/saldo`
+- `/api/v1/admin/clientes`
+- `/api/v1/admin/planes`
+- `/api/v1/admin/metricas`
+- `/api/v1/admin/uso`
+- rutas de recarga o administracion de creditos
+
+## Prueba Rapida
 
 ```bash
-npm run db:migrate
-npm run db:migrate:json
-```
-
-El segundo comando solo es necesario si quieres importar clientes/logs existentes desde `data/api-clients.json` y `data/api-usage.log`.
-
-Ejemplo de token admin fuerte:
-
-```txt
-YOUR_ADMIN_TOKEN
-```
-
-## API key de cliente (ejemplo)
-
-```txt
-YOUR_API_KEY
-```
-
-Para produccion, crea una API key distinta para cada cliente desde el endpoint administrativo.
-
-## Salud del servicio
-
-```bash
-curl https://intranet-portalwebminsa.onrender.com/api/v1/health
-```
-
-## Crear cliente
-
-Requiere token admin.
-
-```bash
-curl -X POST \
-  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"name\":\"cliente-telegram\",\"dailyCredits\":50}" \
-  https://intranet-portalwebminsa.onrender.com/api/v1/admin/clientes
-```
-
-Respuesta:
-
-```json
-{
-  "ok": true,
-  "cliente": {
-    "id": "cli_...",
-    "name": "cliente-telegram",
-    "active": true,
-    "dailyCredits": 50,
-    "remainingCredits": 50,
-    "lastRecharge": "2026-06-18",
-    "createdAt": "2026-06-18T18:00:00.000Z",
-    "apiKey": "YOUR_API_KEY"
-  }
-}
-```
-
-Esa `apiKey` es lo unico que le pasas al cliente.
-
-## Listar clientes
-
-```bash
-curl \
-  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
-  https://intranet-portalwebminsa.onrender.com/api/v1/admin/clientes
-```
-
-## Bloquear cliente
-
-```bash
-curl -X PATCH \
-  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"active\":false}" \
-  https://intranet-portalwebminsa.onrender.com/api/v1/admin/clientes/cli_ID_DEL_CLIENTE
-```
-
-## Cambiar creditos diarios
-
-```bash
-curl -X PATCH \
-  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"dailyCredits\":100}" \
-  https://intranet-portalwebminsa.onrender.com/api/v1/admin/clientes/cli_ID_DEL_CLIENTE
-```
-
-## Recargar creditos
-
-Poner saldo exacto:
-
-```bash
-curl -X POST \
-  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"amount\":50,\"mode\":\"set\"}" \
-  https://intranet-portalwebminsa.onrender.com/api/v1/admin/clientes/cli_ID_DEL_CLIENTE/recargar
-```
-
-Sumar creditos:
-
-```bash
-curl -X POST \
-  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"amount\":10,\"mode\":\"add\"}" \
-  https://intranet-portalwebminsa.onrender.com/api/v1/admin/clientes/cli_ID_DEL_CLIENTE/recargar
-```
-
-## Ver uso
-
-```bash
-curl \
-  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
-  "https://intranet-portalwebminsa.onrender.com/api/v1/admin/uso?limit=50"
-```
-
-## Cliente: consultar saldo
-
-```bash
-curl \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  https://intranet-portalwebminsa.onrender.com/api/v1/saldo
-```
-
-## Cliente: consumir un credito
-
-Usa un endpoint comercial real:
-
-```bash
-curl -X POST \
+curl -X POST https://intranet-portalwebminsa.onrender.com/api/v1/pacientes \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{\"dni\":\"75481714\"}" \
-  https://intranet-portalwebminsa.onrender.com/api/v1/pacientes
+  -d '{"dni":"75481714"}'
 ```
 
-Consulta `/api/v1/saldo` antes y despues para confirmar que el consumo se persistio en PostgreSQL.
+## Logs
 
-## Notas
+Los logs simples se guardan en:
 
-- Cada cliente debe tener su propia API key.
-- La recarga diaria ocurre automaticamente con fecha de Lima.
-- Si un cliente comparte su API key, consumira sus propios creditos.
-- Para cortar acceso, usa `active:false`.
-- No subas `data/api-clients.json` ni `data/api-usage.log` al repositorio.
+```env
+API_USAGE_LOG_PATH=/var/data/api-usage.log
+```
+
+Respalda ese archivo si necesitas auditoria historica.

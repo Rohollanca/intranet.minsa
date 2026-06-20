@@ -7,8 +7,6 @@
     "dev": "vite",
     "build": "vite build",
     "test:documents": "node scripts/regression-document-service.mjs",
-    "db:migrate": "node scripts/run-postgres-migrations.mjs",
-    "db:migrate:json": "node scripts/migrate-api-json-to-postgres.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "node server.js"
@@ -21,7 +19,6 @@
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
-    "pg": "^8.22.0",
     "pizzip": "^3.2.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.6",

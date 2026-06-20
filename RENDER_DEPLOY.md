@@ -17,6 +17,10 @@ NODE_VERSION=22.22.0
 VITE_VERIFICATION_BASE_URL=https://portalwebminsa-certificados.onrender.com
 MEDICAL_API_BASE_URL=https://TU-BACKEND-MEDICO-PUBLICO
 BOT_FILES_BASE_URL=https://TU-SERVIDOR-DE-ARCHIVOS-PUBLICO
+API_SHARED_KEY=YOUR_API_KEY
+API_ENABLE_DOCUMENT_GENERATION=false
+API_ENABLE_DEMO_ENDPOINTS=false
+API_USAGE_LOG_PATH=/var/data/api-usage.log
 ```
 
 Valores actuales usados para este despliegue:
@@ -46,3 +50,29 @@ BOT_FILES_BASE_URL=http://127.0.0.1:3000
 ```
 
 En Render no sirven los `localhost`, por eso deben ser URLs publicas.
+
+## API simple
+
+La API privada usa una sola clave global:
+
+```txt
+Authorization: Bearer YOUR_API_KEY
+```
+
+No configures `DATABASE_URL`; esta version no usa PostgreSQL, clientes, planes ni creditos.
+
+El medico esta fijo en el sistema:
+
+```txt
+RUZ VIVAS, NILIBETH LORIANNY
+CMP: 090558
+```
+
+El login tambien esta fijo en el sistema:
+
+```txt
+Usuario: rvivas
+Clave: 090558
+```
+
+No configures variables `VITE_MEDICO_*`; no son necesarias para el medico ni para el login.
