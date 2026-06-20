@@ -17,7 +17,6 @@ Cliente con API Key:
 - `GET /api/v1/saldo`
 - `POST /api/v1/pacientes`
 - `POST /api/v1/consultas`
-- `POST /api/v1/consulta-demo`
 - `POST /api/v1/descansos`
 - `POST /api/v1/certificados`
 - `POST /api/v1/recetas`
@@ -133,10 +132,10 @@ Variables recomendadas:
 DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DATABASE
 PGSSLMODE=require
 API_ADMIN_TOKEN=YOUR_ADMIN_TOKEN
-API_DEFAULT_KEY=YOUR_API_KEY
 API_DAILY_CREDITS=50
 API_RATE_LIMIT_PER_MINUTE=60
 API_ENABLE_DOCUMENT_GENERATION=false
+API_ENABLE_DEMO_ENDPOINTS=false
 ```
 
 ## PostgreSQL
@@ -157,6 +156,62 @@ npm run db:migrate:json
 ```
 
 Si `DATABASE_URL` no existe, el servidor mantiene el modo local con archivos JSON para desarrollo.
+
+## Prueba real con PostgreSQL
+
+1. Crea una base PostgreSQL y copia su cadena de conexion en `DATABASE_URL`:
+
+```bash
+DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DATABASE
+PGSSLMODE=require
+```
+
+2. Crea o actualiza las tablas y planes:
+
+```bash
+npm run db:migrate
+```
+
+3. Si existen `data/api-clients.json` o `data/api-usage.log`, importalos una sola vez:
+
+```bash
+npm run db:migrate:json
+```
+
+4. Inicia el servicio y verifica salud:
+
+```bash
+npm start
+curl http://127.0.0.1:10000/api/v1/health
+```
+
+5. Crea un cliente usando `YOUR_ADMIN_TOKEN` y conserva la `apiKey` devuelta:
+
+```bash
+curl -X POST http://127.0.0.1:10000/api/v1/admin/clientes \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"validacion-postgres","planId":"basic","dailyCredits":50}'
+```
+
+6. Consulta el saldo, consume un credito mediante el endpoint comercial de pacientes y vuelve a consultar:
+
+```bash
+curl http://127.0.0.1:10000/api/v1/saldo \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+curl -X POST http://127.0.0.1:10000/api/v1/pacientes \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"dni":"75481714"}'
+
+curl http://127.0.0.1:10000/api/v1/saldo \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+El segundo saldo debe ser exactamente un credito menor y los registros deben aparecer en `api_usage_logs`.
+
+`API_ENABLE_DEMO_ENDPOINTS` debe permanecer en `false` en produccion. Con ese valor, `/api/v1/consulta-demo` responde 404 y no aparece en OpenAPI.
 
 ## Migraciones
 

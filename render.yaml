@@ -17,8 +17,6 @@ services:
         value: require
       - key: API_ADMIN_TOKEN
         sync: false
-      - key: API_DEFAULT_KEY
-        sync: false
       - key: VITE_MEDICO_USUARIO
         sync: false
       - key: VITE_MEDICO_CLAVE
@@ -36,4 +34,6 @@ services:
       - key: API_RATE_LIMIT_PER_MINUTE
         value: 60
       - key: API_ENABLE_DOCUMENT_GENERATION
+        value: false
+      - key: API_ENABLE_DEMO_ENDPOINTS
         value: false

@@ -24,12 +24,13 @@ const defaultMedicalProfessional = process.env.API_DEFAULT_MEDICO_NOMBRE || 'MED
 const defaultMedicalCmp = process.env.API_DEFAULT_MEDICO_CMP || '000000';
 const rateLimitBuckets = new Map();
 const apiDocumentsEnabled = process.env.API_ENABLE_DOCUMENT_GENERATION === 'true';
+const apiDemoEndpointsEnabled = process.env.API_ENABLE_DEMO_ENDPOINTS === 'true';
 
 const defaultApiPlans = [
-  { id: 'free', name: 'Plan gratuito', requestsPerMinute: 20, dailyCredits: 10, documentLimitDaily: 0, permissions: ['saldo', 'consulta_demo'] },
-  { id: 'basic', name: 'Plan basico', requestsPerMinute: 60, dailyCredits: 50, documentLimitDaily: 25, permissions: ['saldo', 'consulta_demo', 'pacientes', 'consultas'] },
-  { id: 'professional', name: 'Plan profesional', requestsPerMinute: 120, dailyCredits: 250, documentLimitDaily: 100, permissions: ['saldo', 'consulta_demo', 'pacientes', 'consultas', 'documentos'] },
-  { id: 'enterprise', name: 'Plan empresarial', requestsPerMinute: 300, dailyCredits: 1000, documentLimitDaily: 500, permissions: ['saldo', 'consulta_demo', 'pacientes', 'consultas', 'documentos', 'admin_integracion'] },
+  { id: 'free', name: 'Plan gratuito', requestsPerMinute: 20, dailyCredits: 10, documentLimitDaily: 0, permissions: ['saldo'] },
+  { id: 'basic', name: 'Plan basico', requestsPerMinute: 60, dailyCredits: 50, documentLimitDaily: 25, permissions: ['saldo', 'pacientes', 'consultas'] },
+  { id: 'professional', name: 'Plan profesional', requestsPerMinute: 120, dailyCredits: 250, documentLimitDaily: 100, permissions: ['saldo', 'pacientes', 'consultas', 'documentos'] },
+  { id: 'enterprise', name: 'Plan empresarial', requestsPerMinute: 300, dailyCredits: 1000, documentLimitDaily: 500, permissions: ['saldo', 'pacientes', 'consultas', 'documentos', 'admin_integracion'] },
 ];
 
 const apiStore = createApiStore({
@@ -161,7 +162,7 @@ const handleApiV1 = async (req, res) => {
     });
   }
 
-  if (req.method === 'POST' && url.pathname === '/api/v1/consulta-demo') {
+  if (apiDemoEndpointsEnabled && req.method === 'POST' && url.pathname === '/api/v1/consulta-demo') {
     let body = {};
     try {
       body = await readRequestBody(req);
@@ -189,7 +190,10 @@ const handleApiV1 = async (req, res) => {
   return sendJson(res, 404, {
     ok: false,
     error: 'Endpoint API no encontrado',
-    endpoints: ['GET /api/v1/saldo', 'POST /api/v1/consulta-demo'],
+    endpoints: [
+      'GET /api/v1/saldo',
+      ...(apiDemoEndpointsEnabled ? ['POST /api/v1/consulta-demo'] : []),
+    ],
   });
 };
 
@@ -275,7 +279,7 @@ const apiDefaultStore = () => ({
       remainingCredits: defaultDailyCredits,
       lastRecharge: getToday(),
       active: true,
-      permissions: ['saldo', 'consulta_demo', 'pacientes', 'consultas'],
+      permissions: ['saldo', 'pacientes', 'consultas'],
       createdAt: new Date().toISOString(),
     },
   ] : [],
@@ -954,7 +958,7 @@ const handleApiV1Real = async (req, res) => {
     }));
   }
 
-  if (req.method === 'POST' && url.pathname === '/api/v1/consulta-demo') {
+  if (apiDemoEndpointsEnabled && req.method === 'POST' && url.pathname === '/api/v1/consulta-demo') {
     let body = {};
     try {
       body = await readRequestBody(req);
@@ -1003,7 +1007,7 @@ const handleApiV1Real = async (req, res) => {
       'GET /api/v1/health',
       'GET /api/v1/openapi.json',
       'GET /api/v1/saldo',
-      'POST /api/v1/consulta-demo',
+      ...(apiDemoEndpointsEnabled ? ['POST /api/v1/consulta-demo'] : []),
       'POST /api/v1/pacientes',
       'POST /api/v1/consultas',
       'POST /api/v1/descansos',

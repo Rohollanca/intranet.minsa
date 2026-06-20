@@ -64,10 +64,10 @@ CREATE INDEX IF NOT EXISTS idx_api_usage_logs_endpoint ON api_usage_logs(endpoin
 CREATE INDEX IF NOT EXISTS idx_api_rate_limits_key_window ON api_rate_limits(api_key_id, window_start);
 
 INSERT INTO api_plans (id, name, requests_per_minute, daily_credits, document_limit_daily, permissions) VALUES
-('free', 'Plan gratuito', 20, 10, 0, '["saldo","consulta_demo"]'::jsonb),
-('basic', 'Plan basico', 60, 50, 25, '["saldo","consulta_demo","pacientes","consultas"]'::jsonb),
-('professional', 'Plan profesional', 120, 250, 100, '["saldo","consulta_demo","pacientes","consultas","documentos"]'::jsonb),
-('enterprise', 'Plan empresarial', 300, 1000, 500, '["saldo","consulta_demo","pacientes","consultas","documentos","admin_integracion"]'::jsonb)
+('free', 'Plan gratuito', 20, 10, 0, '["saldo"]'::jsonb),
+('basic', 'Plan basico', 60, 50, 25, '["saldo","pacientes","consultas"]'::jsonb),
+('professional', 'Plan profesional', 120, 250, 100, '["saldo","pacientes","consultas","documentos"]'::jsonb),
+('enterprise', 'Plan empresarial', 300, 1000, 500, '["saldo","pacientes","consultas","documentos","admin_integracion"]'::jsonb)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   requests_per_minute = EXCLUDED.requests_per_minute,

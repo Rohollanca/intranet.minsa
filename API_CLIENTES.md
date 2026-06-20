@@ -16,9 +16,9 @@ Configura estas variables en Render > Environment:
 DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DATABASE
 PGSSLMODE=require
 API_ADMIN_TOKEN=YOUR_ADMIN_TOKEN
-API_DEFAULT_KEY=YOUR_API_KEY
 API_DAILY_CREDITS=50
 API_RATE_LIMIT_PER_MINUTE=60
+API_ENABLE_DEMO_ENDPOINTS=false
 ```
 
 Antes de vender acceso en produccion ejecuta:
@@ -36,13 +36,13 @@ Ejemplo de token admin fuerte:
 YOUR_ADMIN_TOKEN
 ```
 
-## API key demo
+## API key de cliente (ejemplo)
 
 ```txt
 YOUR_API_KEY
 ```
 
-Usala solo para pruebas. Para vender acceso, crea una API key distinta para cada cliente.
+Para produccion, crea una API key distinta para cada cliente desde el endpoint administrativo.
 
 ## Salud del servicio
 
@@ -148,30 +148,19 @@ curl \
   https://intranet-portalwebminsa.onrender.com/api/v1/saldo
 ```
 
-## Cliente: descontar 1 credito de prueba
+## Cliente: consumir un credito
+
+Usa un endpoint comercial real:
 
 ```bash
 curl -X POST \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{\"dni\":\"75481714\",\"tipo\":\"prueba\"}" \
-  https://intranet-portalwebminsa.onrender.com/api/v1/consulta-demo
+  -d "{\"dni\":\"75481714\"}" \
+  https://intranet-portalwebminsa.onrender.com/api/v1/pacientes
 ```
 
-Respuesta:
-
-```json
-{
-  "ok": true,
-  "tipo": "consulta_demo",
-  "mensaje": "Credito descontado correctamente. Endpoint demo para integracion autorizada.",
-  "entrada": {
-    "dni": "75481714",
-    "tipo": "prueba"
-  },
-  "creditos_restantes": 49
-}
-```
+Consulta `/api/v1/saldo` antes y despues para confirmar que el consumo se persistio en PostgreSQL.
 
 ## Notas
 
