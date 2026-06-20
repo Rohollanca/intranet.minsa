@@ -21,6 +21,10 @@ API_SHARED_KEY=YOUR_API_KEY
 API_ENABLE_DOCUMENT_GENERATION=false
 API_ENABLE_DEMO_ENDPOINTS=false
 API_USAGE_LOG_PATH=/var/data/api-usage.log
+VITE_MEDICO_USUARIO=TU_USUARIO_MEDICO
+VITE_MEDICO_CLAVE=TU_CLAVE_MEDICO
+VITE_MEDICO_NOMBRE=NOMBRE_COMPLETO_DEL_MEDICO
+VITE_MEDICO_CMP=CMP_DEL_MEDICO
 ```
 
 Valores actuales usados para este despliegue:
@@ -60,3 +64,5 @@ Authorization: Bearer YOUR_API_KEY
 ```
 
 No configures `DATABASE_URL`; esta version no usa PostgreSQL, clientes, planes ni creditos.
+
+Despues de cambiar cualquier variable `VITE_` en Render, ejecuta un nuevo deploy/build. Vite inserta esas variables durante el build del frontend; si cambias `VITE_MEDICO_NOMBRE` o `VITE_MEDICO_CMP` sin redeploy, la web seguira mostrando los valores del build anterior.

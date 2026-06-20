@@ -9,17 +9,35 @@ import { generateActMed, generateAutogenerado, getTotalQuantity } from './lib/do
 
 const VERIFICATION_BASE_URL = (import.meta.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
 const initialHospital = hospitalesMinsa[Math.floor(Math.random() * hospitalesMinsa.length)] || {};
+const requiredMedicoEnv = {
+  VITE_MEDICO_USUARIO: import.meta.env.VITE_MEDICO_USUARIO,
+  VITE_MEDICO_CLAVE: import.meta.env.VITE_MEDICO_CLAVE,
+  VITE_MEDICO_NOMBRE: import.meta.env.VITE_MEDICO_NOMBRE,
+  VITE_MEDICO_CMP: import.meta.env.VITE_MEDICO_CMP,
+};
+const missingMedicoEnv = Object.entries(requiredMedicoEnv)
+  .filter(([, value]) => !String(value || '').trim())
+  .map(([key]) => key);
+const medicoConfigError = missingMedicoEnv.length
+  ? `Configuración incompleta en Render. Faltan variables: ${missingMedicoEnv.join(', ')}. Configúralas y ejecuta un nuevo deploy/build.`
+  : '';
 const MEDICO_LOGIN = {
-  usuario: import.meta.env.VITE_MEDICO_USUARIO || 'demo@example.com',
-  clave: import.meta.env.VITE_MEDICO_CLAVE || '',
-  nombre: import.meta.env.VITE_MEDICO_NOMBRE || 'MEDICO DEMO',
+  usuario: String(requiredMedicoEnv.VITE_MEDICO_USUARIO || '').trim().toLowerCase(),
+  clave: String(requiredMedicoEnv.VITE_MEDICO_CLAVE || '').trim(),
+  nombre: String(requiredMedicoEnv.VITE_MEDICO_NOMBRE || '').trim(),
+  cmp: String(requiredMedicoEnv.VITE_MEDICO_CMP || '').trim(),
 };
 
+if (medicoConfigError && typeof window !== 'undefined') {
+  localStorage.removeItem('sistema-medico-auth');
+  localStorage.removeItem('sistema-medico-user');
+}
+
 const App = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('sistema-medico-auth') === 'true');
+  const [isAuthenticated, setIsAuthenticated] = useState(() => !medicoConfigError && localStorage.getItem('sistema-medico-auth') === 'true');
   const [isBooting, setIsBooting] = useState(false);
   const [loginForm, setLoginForm] = useState({ usuario: '', clave: '' });
-  const [loginError, setLoginError] = useState('');
+  const [loginError, setLoginError] = useState(medicoConfigError);
   const [view, setView] = useState('search');
   const [dni, setDni] = useState('');
   const [patient, setPatient] = useState(null);
@@ -40,8 +58,8 @@ const App = () => {
   const [formData, setFormData] = useState({
     establecimiento: initialHospital.nombre || '',
     servicio: 'EMERGENCIA',
-    profesional: import.meta.env.VITE_MEDICO_NOMBRE || 'MEDICO DEMO',
-    cmp: import.meta.env.VITE_MEDICO_CMP || '000000',
+    profesional: MEDICO_LOGIN.nombre,
+    cmp: MEDICO_LOGIN.cmp,
     cie: null,
     dias: 3,
     fechaInicio: new Date().toISOString().split('T')[0],
@@ -298,8 +316,10 @@ const App = () => {
     event.preventDefault();
     const usuario = loginForm.usuario.trim().toLowerCase();
     const clave = loginForm.clave.trim();
-    if (!MEDICO_LOGIN.clave) {
-      setLoginError('Credenciales institucionales no configuradas');
+    if (medicoConfigError) {
+      localStorage.removeItem('sistema-medico-auth');
+      localStorage.removeItem('sistema-medico-user');
+      setLoginError(medicoConfigError);
       return;
     }
     if (usuario !== MEDICO_LOGIN.usuario || clave !== MEDICO_LOGIN.clave) {
