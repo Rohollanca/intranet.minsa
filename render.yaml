@@ -11,11 +11,7 @@ services:
         value: 22.22.0
       - key: VITE_VERIFICATION_BASE_URL
         value: https://portalwebminsa-certificados.onrender.com
-      - key: DATABASE_URL
-        sync: false
-      - key: PGSSLMODE
-        value: require
-      - key: API_ADMIN_TOKEN
+      - key: API_SHARED_KEY
         sync: false
       - key: VITE_MEDICO_USUARIO
         sync: false
@@ -29,10 +25,8 @@ services:
         value: https://intranet-api.alisadata.lat
       - key: BOT_FILES_BASE_URL
         value: https://intranet-files.alisadata.lat
-      - key: API_DAILY_CREDITS
-        value: 50
-      - key: API_RATE_LIMIT_PER_MINUTE
-        value: 60
+      - key: API_USAGE_LOG_PATH
+        value: /var/data/api-usage.log
       - key: API_ENABLE_DOCUMENT_GENERATION
         value: false
       - key: API_ENABLE_DEMO_ENDPOINTS
