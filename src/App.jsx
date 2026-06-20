@@ -3,18 +3,16 @@ import CIE10Autocomplete from './components/CIE10Autocomplete';
 import { hospitalesMinsa } from './data/hospitales-minsa';
 import { hospitalesEssalud } from './data/hospitales-essalud';
 import { pnumeRecetas } from './data/pnume-recetas';
-import PizZip from 'pizzip';
-import Docxtemplater from 'docxtemplater';
 import { saveAs } from 'file-saver';
-import QRCode from 'qrcode';
-import ImageModule from 'docxtemplater-image-module-free/js/index.js';
+import { createOfficialDocument } from './lib/documentService';
+import { generateActMed, generateAutogenerado, getTotalQuantity } from './lib/documentFormatters';
 
 const VERIFICATION_BASE_URL = (import.meta.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
 const initialHospital = hospitalesMinsa[Math.floor(Math.random() * hospitalesMinsa.length)] || {};
 const MEDICO_LOGIN = {
-  usuario: 'rvivas',
-  clave: '090558',
-  nombre: 'RUZ VIVAS, NILIBETH LORIANNY',
+  usuario: import.meta.env.VITE_MEDICO_USUARIO || 'demo@example.com',
+  clave: import.meta.env.VITE_MEDICO_CLAVE || '',
+  nombre: import.meta.env.VITE_MEDICO_NOMBRE || 'MEDICO DEMO',
 };
 
 const App = () => {
@@ -27,9 +25,9 @@ const App = () => {
   const [patient, setPatient] = useState(null);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [, setError] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
-  const [docxBlob, setDocxBlob] = useState(null);
+  const [, setDocxBlob] = useState(null);
   const [receptionSent, setReceptionSent] = useState(false);
   const [institucion, setInstitucion] = useState('MINSA');
   const [departamento, setDepartamento] = useState(initialHospital.departamento || '');
@@ -42,8 +40,8 @@ const App = () => {
   const [formData, setFormData] = useState({
     establecimiento: initialHospital.nombre || '',
     servicio: 'EMERGENCIA',
-    profesional: 'RUZ VIVAS, NILIBETH LORIANNY',
-    cmp: '090558',
+    profesional: import.meta.env.VITE_MEDICO_NOMBRE || 'MEDICO DEMO',
+    cmp: import.meta.env.VITE_MEDICO_CMP || '000000',
     cie: null,
     dias: 3,
     fechaInicio: new Date().toISOString().split('T')[0],
@@ -64,10 +62,6 @@ const App = () => {
   const defaultMed = { nombre: '', concentracion: '', presentacion: '', cantidad: '', unidad: 'MG', via: 'ORAL', frecuencia: '', duracion: '', indicacion: '' };
   const addMed = () => setFormData({...formData, meds: [...formData.meds, { ...defaultMed }]});
   const removeMed = (index) => setFormData({...formData, meds: formData.meds.filter((_, i) => i !== index)});
-  const updateMed = (index, field, value) => setFormData({
-    ...formData,
-    meds: formData.meds.map((med, i) => i === index ? {...med, [field]: value} : med)
-  });
   const medNames = useMemo(() => [...new Set(pnumeRecetas.map(item => item.medicamento))].sort((a, b) => a.localeCompare(b)), []);
   const uniqueValues = (values) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const catalogRowsFor = (med) => pnumeRecetas.filter(item => item.medicamento === String(med || '').toUpperCase());
@@ -81,24 +75,6 @@ const App = () => {
   const defaultPresentations = ['TABLETA', 'CAPSULA', 'JARABE', 'SUSPENSION', 'AMPOLLA', 'VIAL', 'CREMA', 'GOTAS', 'INHALADOR', 'SOLUCION'];
   const defaultRoutes = ['ORAL', 'INTRAMUSCULAR', 'ENDOVENOSA', 'SUBCUTÁNEA', 'TÓPICA', 'OFTÁLMICA', 'INHALATORIA', 'SUBLINGUAL'];
   const defaultFrequencies = ['CADA 4 HORAS', 'CADA 6 HORAS', 'CADA 8 HORAS', 'CADA 12 HORAS', 'CADA 24 HORAS', 'UNA VEZ AL DÍA', 'DOS VECES AL DÍA', 'DOSIS ÚNICA'];
-  const getFrequencyPerDay = (frequency) => {
-    const text = String(frequency || '').toUpperCase();
-    const hours = Number(text.match(/CADA\s+(\d+)\s*HORA/)?.[1] || 0);
-    if (hours > 0) return 24 / hours;
-    if (text.includes('DOS VECES')) return 2;
-    if (text.includes('TRES VECES')) return 3;
-    if (text.includes('UNA VEZ') || text.includes('CADA 24')) return 1;
-    if (text.includes('DOSIS ÚNICA') || text.includes('DOSIS UNICA')) return 1;
-    return 0;
-  };
-  const getTotalQuantity = (med) => {
-    const dose = Number(String(med.cantidad || '').replace(',', '.').match(/\d+(?:\.\d+)?/)?.[0] || 0);
-    const days = Number(String(med.duracion || formData.dias || '').replace(/\D/g, '') || 0);
-    const perDay = getFrequencyPerDay(med.frecuencia);
-    if (!dose || !days || !perDay) return '';
-    const total = dose * days * perDay;
-    return `${Number.isInteger(total) ? total : total.toFixed(2)} ${med.unidad || ''}`.trim();
-  };
   const updateMedCatalog = (index, field, value) => {
     setFormData(prev => ({
       ...prev,
@@ -183,138 +159,10 @@ const App = () => {
     setFormData(prev => ({...prev, establecimiento: value}));
   };
 
-  const getTemplateCandidates = () => {
-    const inst = institucion === 'ESSALUD' ? 'ESSALUD' : 'MINSA';
-    const templates = {
-      descanso: [
-        `/DESCANSO_MEDICO_${inst}.docx`,
-        `/DESCANSO MEDICO_${inst}.docx`,
-        `/DESCANSO-MEDICO-${inst}.docx`,
-        '/CONSTANCIA-MINSA-73022866_backup.docx',
-      ],
-      certificado: [
-        `/CERTIFICADO MEDICO_${inst}.docx`,
-        `/CERTIFICADO_MEDICO_${inst}.docx`,
-        `/CERTIFICADO-MEDICO-${inst}.docx`,
-        '/CERTIFICADO-MEDICO-ESSALUD-72730202.docx',
-      ],
-      receta: [
-        `/RECETA-MEDICA-${inst}.docx`,
-        '/RECETA-MEDICA-MINSA-44443333.docx',
-      ],
-    };
-    return templates[selectedDoc?.id] || templates.descanso;
-  };
-
-  const fetchFirstTemplate = async () => {
-    const candidates = getTemplateCandidates();
-    for (const path of candidates) {
-      const response = await fetch(encodeURI(path), { cache: 'no-store' });
-      if (!response.ok) continue;
-      const buffer = await response.arrayBuffer();
-      const bytes = new Uint8Array(buffer.slice(0, 4));
-      const isDocxZip = bytes[0] === 0x50 && bytes[1] === 0x4b;
-      if (isDocxZip) return { path, buffer };
-    }
-    throw new Error(`Plantilla oficial no encontrada: ${candidates.join(', ')}`);
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const [year, month, day] = dateString.split('-');
-    return `${day}/${month}/${year}`;
-  };
-
-  const formatLongDate = (dateString, includeWeekday = false) => {
-    if (!dateString) return '';
-    const date = new Date(`${dateString}T00:00:00`);
-    const options = { day: 'numeric', month: 'long', year: 'numeric' };
-    if (includeWeekday) options.weekday = 'long';
-    return new Intl.DateTimeFormat('es-PE', options).format(date);
-  };
-
-  const parseBirthDate = (value) => {
-    const text = String(value || '').trim();
-    if (!text) return null;
-    const match = text.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
-    if (!match) return null;
-    const [, day, month, year] = match;
-    const date = new Date(Number(year), Number(month) - 1, Number(day));
-    if (Number.isNaN(date.getTime())) return null;
-    return date;
-  };
-
-  const calculateFullAgeFromBirthDate = (birthDateValue, referenceDate = new Date()) => {
-    const birthDate = parseBirthDate(birthDateValue);
-    if (!birthDate || birthDate > referenceDate) return '';
-    let years = referenceDate.getFullYear() - birthDate.getFullYear();
-    let months = referenceDate.getMonth() - birthDate.getMonth();
-    let days = referenceDate.getDate() - birthDate.getDate();
-    if (days < 0) {
-      const previousMonth = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 0);
-      days += previousMonth.getDate();
-      months -= 1;
-    }
-    if (months < 0) {
-      months += 12;
-      years -= 1;
-    }
-    return `${years} AÑOS ${months} MESES ${days} DÍAS`;
-  };
-
-  const getAgeYears = (ageValue, birthDateValue = '') => {
-    const calculated = calculateFullAgeFromBirthDate(birthDateValue);
-    if (calculated) return calculated.match(/\d+/)?.[0] || '0';
-    const text = String(ageValue || '');
-    return text.match(/\d+/)?.[0] || '0';
-  };
-
-  const formatFullAge = (ageValue, birthDateValue = '') => {
-    const calculated = calculateFullAgeFromBirthDate(birthDateValue);
-    if (calculated) return calculated;
-    const text = String(ageValue || '').toUpperCase();
-    const years = text.match(/\d+/)?.[0] || '0';
-    if (text.includes('MESES') || text.includes('DÍAS') || text.includes('DIAS')) {
-      const numbers = text.match(/\d+/g) || [years, '0', '0'];
-      return `${numbers[0] || years} AÑOS ${numbers[1] || '0'} MESES ${numbers[2] || '0'} DÍAS`;
-    }
-    return `${years} AÑOS 0 MESES 0 DÍAS`;
-  };
-
-  const generateAutogenerado = (dniValue) => {
-    const digits = String(dniValue || '').replace(/\D/g, '').padStart(8, '0');
-    const checksum = digits.split('').reduce((sum, digit, index) => sum + Number(digit) * (index + 2), 0) % 97;
-    return `${digits}${String(checksum).padStart(2, '0')}`;
-  };
-
-  const generateActMed = (dniValue, dateValue) => {
-    const digits = String(dniValue || '').replace(/\D/g, '').padStart(8, '0');
-    const compactDate = String(dateValue || new Date().toISOString().split('T')[0]).replace(/\D/g, '');
-    const seed = `${digits}${compactDate}`;
-    const checksum = seed.split('').reduce((sum, digit, index) => sum + Number(digit) * (index + 3), 0) % 100000;
-    return `AM${compactDate.slice(2)}${String(checksum).padStart(5, '0')}`;
-  };
-
-  const generateCitt = (dniValue, dateValue) => {
-    const digits = String(dniValue || '').replace(/\D/g, '').padStart(8, '0');
-    const compactDate = String(dateValue || new Date().toISOString().split('T')[0]).replace(/\D/g, '');
-    const seed = `${digits}${compactDate}`;
-    const middle = String(seed.split('').reduce((sum, digit, index) => sum + Number(digit) * (index + 7), 9240000000) % 9000000000 + 1000000000).slice(0, 10);
-    const suffix = String(seed.split('').reduce((sum, digit, index) => sum + Number(digit) * (index + 3), 0) % 97).padStart(2, '0');
-    return `T-${middle.slice(0, 3)}-${middle.slice(3)}-${suffix}`;
-  };
-
-  const generateVerificationCode = (docId) => {
-    const prefixes = { descanso: 'DM', certificado: 'CM', receta: 'RX' };
-    const prefix = prefixes[docId] || 'DC';
-    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    const bytes = new Uint8Array(8);
-    window.crypto?.getRandomValues?.(bytes);
-    const random = Array.from(bytes, (byte, index) => {
-      const fallback = (Date.now() + index * 37 + Math.floor(Math.random() * 255)) % alphabet.length;
-      return alphabet[(byte || fallback) % alphabet.length];
-    }).join('');
-    return `${prefix}-${random}`;
+  const loadTemplateFromPublic = async (path) => {
+    const response = await fetch(encodeURI(path), { cache: 'no-store' });
+    if (!response.ok) return null;
+    return { path, buffer: await response.arrayBuffer() };
   };
 
   const registerVerificationDocument = async (record) => {
@@ -327,32 +175,6 @@ const App = () => {
     } catch (error) {
       console.warn('No se pudo registrar el documento en el verificador:', error.message);
     }
-  };
-
-  const getDiaSemana = (dateString) => {
-    const date = new Date(dateString + 'T00:00:00');
-    const dias = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
-    return dias[date.getDay()];
-  };
-
-  const calculateEndDate = (start, days) => {
-    if (!start || !days) return '';
-    const date = new Date(start + 'T00:00:00');
-    date.setDate(date.getDate() + parseInt(days));
-    return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
-  };
-
-  const generateObservationText = () => {
-    if (!formData.cie || !patient) return '';
-    if (formData.usarObsAuto) {
-      const diaSemana = getDiaSemana(formData.fechaInicio);
-      const fechaAtencion = formatDate(formData.fechaInicio);
-      const fechaFin = calculateEndDate(formData.fechaInicio, formData.dias);
-      const diagnostico = `${formData.cie.codigoCIE} - ${formData.cie.descripcionCIE.toUpperCase()}`;
-      const autoText = `EL PACIENTE ${patient.nombre}, IDENTIFICADO CON DNI N.° ${patient.dni}, INGRESÓ EL DÍA ${diaSemana} ${fechaAtencion} A LAS ${formData.horaIngreso} HORAS AL ÁREA DE ${formData.servicio} DEL ${formData.establecimiento}. TRAS LA EVALUACIÓN MÉDICA POR EL PROFESIONAL ${formData.profesional}, SE DETERMINÓ COMO DIAGNÓSTICO PRINCIPAL: ${diagnostico}. SE INDICA DESCANSO MÉDICO POR ${formData.dias} DÍA(S), DESDE EL ${fechaAtencion} HASTA EL ${fechaFin}. EL PACIENTE DEBERÁ MANTENER ADECUADA HIDRATACIÓN, GUARDAR REPOSO, CUMPLIR LAS INDICACIONES MÉDICAS BRINDADAS Y ACUDIR A CONTROL SEGÚN EVOLUCIÓN.`;
-      return formData.obsCustom.trim() ? `${autoText}\n\nNOTAS ADICIONALES: ${formData.obsCustom.toUpperCase()}` : autoText;
-    }
-    return formData.obsCustom.toUpperCase();
   };
 
   const b64toBlob = (b64Data, contentType = '', sliceSize = 512) => {
@@ -425,102 +247,21 @@ const App = () => {
         } else { attempts++; setTimeout(poll, 1000); }
       };
       poll();
-    } catch (err) { setError('Error de conexión clínica'); setLoading(false); }
+    } catch { setError('Error de conexión clínica'); setLoading(false); }
   };
 
   const emitOfficialDocument = async (formatType) => {
     setLoading(true);
     try {
-      const { buffer: content } = await fetchFirstTemplate();
-      const zip = new PizZip(content);
-      zip.file(/word\/.*\.xml$/).forEach((file) => {
-        const xml = file.asText();
-        const normalizedXml = xml
-          .replace(/\{\{\s*QR_IMAGE\s*\}\}/g, '{{%QR_IMAGE}}')
-          .replace(/\{\{\s*QR\s*\}\}/g, '{{%QR_IMAGE}}');
-        if (normalizedXml !== xml) zip.file(file.name, normalizedXml);
-      });
-      const doc = new Docxtemplater(zip, {
-        paragraphLoop: true, linebreaks: true, delimiters: { start: '{{', end: '}}' },
-        modules: [new ImageModule({ centered: false, getImage: (tag) => {
-          const binaryString = window.atob(tag.split(',')[1]);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-          return bytes.buffer;
-        }, getSize: () => [105, 105] })]
-      });
-      const tipoSeguroInstitucional = institucion === 'ESSALUD' ? 'ESSALUD' : 'SIS';
-      const numeroOrden = formData.numeroOrden || String(Math.floor(88000000 + Math.random() * 999999));
-      const noCitt = formData.numeroOrden || generateCitt(patient.dni, formData.fechaInicio);
-      const pi = formData.pi || patient.pi || `${patient.dni}${String(Date.now()).slice(-2)}`;
-      const fechaFin = calculateEndDate(formData.fechaInicio, formData.dias);
-      const autogenerado = patient.autogenerado || generateAutogenerado(patient.dni);
-      const actMed = patient.actMed || generateActMed(patient.dni, formData.fechaInicio);
-      const codigoVerificacion = generateVerificationCode(selectedDoc?.id);
-      const verificationUrl = `${VERIFICATION_BASE_URL}/verificar?codigo=${encodeURIComponent(codigoVerificacion)}`;
-      const qrDataUrl = await QRCode.toDataURL(verificationUrl, {
-        errorCorrectionLevel: 'L',
-        margin: 1,
-        scale: 8,
-      });
-      const templateData = {
-        ESTABLECIMIENTO: formData.establecimiento, SERVICIO: formData.servicio, PROFESIONAL: formData.profesional, CMP: formData.cmp,
-        PACIENTE: patient.nombre, DNI: patient.dni, EDAD: selectedDoc?.id === 'certificado' ? getAgeYears(patient.edad, patient.fechaNacimiento) : formatFullAge(patient.edad, patient.fechaNacimiento), SEXO: patient.sexo, HC: patient.hc,
-        NUMERO_ORDEN: numeroOrden, INSTITUCION: institucion, FARMACIA: formData.farmacia, PI: pi,
-        AUTOGENERADO: autogenerado, ACT_MED: actMed,
-        NO_CITT: noCitt, ACTO_MEDICO: actMed, TIPO_ATENCION: formData.tipoAtencion.toUpperCase(),
-        VIGENCIA: formatDate(formData.vigencia), DIAS: formData.dias, DIAS_TEXTO: `${formData.dias} DÍAS`,
-        DIAS_CONSECUTIVOS: formData.dias, DIAS_NO_CONSECUTIVOS: formData.diasNoConsecutivos || '0',
-        FECHA_OTORGAMIENTO: formatDate(formData.fechaInicio),
-        FECHA: formatDate(formData.fechaInicio), HORA: formData.horaIngreso, FECHA_FIN: fechaFin,
-        FECHA_INICIO: formatDate(formData.fechaInicio), INICIO_DESCANSO: formatDate(formData.fechaInicio),
-        FECHA_ATENCION_LARGA: formatLongDate(formData.fechaInicio), HORA_ATENCION: formData.horaIngreso,
-        FECHA_EMISION_LARGA: formatLongDate(formData.fechaInicio, true), DISTRITO: formData.distrito.toUpperCase(),
-        SEGURO: tipoSeguroInstitucional, TIPO_SEGURO: tipoSeguroInstitucional, CIE10_CODIGO: formData.cie?.codigoCIE || '',
-        CIE10_DESCRIPCION: formData.cie?.descripcionCIE?.toUpperCase() || '', OBSERVACIONES: generateObservationText(),
-        DIAGNOSTICO: formData.cie?.descripcionCIE?.toUpperCase() || '',
-        MEDICO: formData.profesional, CMP_MEDICO: formData.cmp, QR_IMAGE: qrDataUrl,
-        CODIGO_VERIFICACION: codigoVerificacion, URL_VERIFICACION: verificationUrl,
-        MEDS: formData.meds.map((m, i) => ({
-          idx: i + 1,
-          codigo: String(211683 + i),
-          n: (m.nombre || 'MEDICAMENTO').toUpperCase(),
-          d: (m.concentracion || `${m.cantidad || ''} ${m.unidad || ''}`).trim().toUpperCase(),
-          via: (m.via || '').toUpperCase(),
-          f: (m.frecuencia || '').toUpperCase(),
-          indicacion: (m.indicacion || '').toUpperCase(),
-          cantidad: m.cantidad || '',
-          unidad: (m.unidad || '').toUpperCase(),
-          presentacion: (m.presentacion || '').toUpperCase(),
-          cantidad_total: getTotalQuantity(m).toUpperCase(),
-          CANTIDAD_TOTAL: getTotalQuantity(m).toUpperCase(),
-          dias: (m.duracion || formData.dias || '').toString().replace(/\D/g, '') || String(formData.dias || ''),
-          duracion: (m.duracion || formData.dias || '').toString().replace(/\D/g, '') || String(formData.dias || '')
-        }))
-      };
-      const verificationRecord = {
-        codigo: codigoVerificacion,
-        url: verificationUrl,
-        estado: 'VALIDO',
-        documento: selectedDoc?.label || selectedDoc?.id || 'Documento de salud',
-        documentoId: selectedDoc?.id || 'documento',
+      const { docx: generatedDocx, verificationRecord } = await createOfficialDocument({
+        patient,
+        formData,
+        selectedDoc,
         institucion,
-        establecimiento: formData.establecimiento,
-        paciente: patient.nombre,
-        dni: patient.dni,
-        fecha: formatDate(formData.fechaInicio),
-        fechaIso: formData.fechaInicio,
-        medico: formData.profesional,
-        cmp: formData.cmp,
-        diagnostico: formData.cie?.descripcionCIE?.toUpperCase() || '',
-        cie10: formData.cie?.codigoCIE || '',
-        numeroOrden,
-        noCitt,
-        autogenerado,
-        actMed
-      };
-      doc.render(templateData);
-      const generatedDocx = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+        verificationBaseUrl: VERIFICATION_BASE_URL,
+        loadTemplate: loadTemplateFromPublic,
+        output: 'blob',
+      });
       setDocxBlob(generatedDocx);
       if (formatType === 'docx') {
         await registerVerificationDocument(verificationRecord);
@@ -557,6 +298,10 @@ const App = () => {
     event.preventDefault();
     const usuario = loginForm.usuario.trim().toLowerCase();
     const clave = loginForm.clave.trim();
+    if (!MEDICO_LOGIN.clave) {
+      setLoginError('Credenciales institucionales no configuradas');
+      return;
+    }
     if (usuario !== MEDICO_LOGIN.usuario || clave !== MEDICO_LOGIN.clave) {
       setLoginError('Credenciales institucionales no válidas');
       return;
@@ -1118,7 +863,7 @@ const App = () => {
                         const presentationOptions = uniqueValues(rows.map(item => item.presentacion));
                         const routeOptions = uniqueValues(rows.map(item => item.via));
                         const frequencyOptions = uniqueValues(rows.map(item => item.frecuenciaDefault));
-                        const totalQuantity = getTotalQuantity(med);
+                        const totalQuantity = getTotalQuantity(med, formData.dias);
                         const medSuggestions = medSuggestionsFor(med.nombre);
                         return (
                         <div key={index} className="border border-[#D8E0E8] rounded bg-[#F8FBFD] p-4">

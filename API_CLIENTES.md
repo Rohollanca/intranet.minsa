@@ -13,24 +13,36 @@ La API usa llaves por cliente, creditos diarios, consumo por consulta y logs de 
 Configura estas variables en Render > Environment:
 
 ```txt
-API_ADMIN_TOKEN=pon_aqui_un_token_largo_privado
+DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DATABASE
+PGSSLMODE=require
+API_ADMIN_TOKEN=YOUR_ADMIN_TOKEN
 API_DAILY_CREDITS=50
 API_RATE_LIMIT_PER_MINUTE=60
+API_ENABLE_DEMO_ENDPOINTS=false
 ```
+
+Antes de vender acceso en produccion ejecuta:
+
+```bash
+npm run db:migrate
+npm run db:migrate:json
+```
+
+El segundo comando solo es necesario si quieres importar clientes/logs existentes desde `data/api-clients.json` y `data/api-usage.log`.
 
 Ejemplo de token admin fuerte:
 
 ```txt
-adm_minsa_L9m2P7xQ4rT8vN3sK6dF1hW5
+YOUR_ADMIN_TOKEN
 ```
 
-## API key demo
+## API key de cliente (ejemplo)
 
 ```txt
-sk_live_minsa_Q7v4N9p2K8r6T3x5H1m0D9s4
+YOUR_API_KEY
 ```
 
-Usala solo para pruebas. Para vender acceso, crea una API key distinta para cada cliente.
+Para produccion, crea una API key distinta para cada cliente desde el endpoint administrativo.
 
 ## Salud del servicio
 
@@ -44,7 +56,7 @@ Requiere token admin.
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer adm_minsa_L9m2P7xQ4rT8vN3sK6dF1hW5" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"cliente-telegram\",\"dailyCredits\":50}" \
   https://intranet-portalwebminsa.onrender.com/api/v1/admin/clientes
@@ -63,7 +75,7 @@ Respuesta:
     "remainingCredits": 50,
     "lastRecharge": "2026-06-18",
     "createdAt": "2026-06-18T18:00:00.000Z",
-    "apiKey": "sk_live_..."
+    "apiKey": "YOUR_API_KEY"
   }
 }
 ```
@@ -74,7 +86,7 @@ Esa `apiKey` es lo unico que le pasas al cliente.
 
 ```bash
 curl \
-  -H "Authorization: Bearer adm_minsa_L9m2P7xQ4rT8vN3sK6dF1hW5" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   https://intranet-portalwebminsa.onrender.com/api/v1/admin/clientes
 ```
 
@@ -82,7 +94,7 @@ curl \
 
 ```bash
 curl -X PATCH \
-  -H "Authorization: Bearer adm_minsa_L9m2P7xQ4rT8vN3sK6dF1hW5" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"active\":false}" \
   https://intranet-portalwebminsa.onrender.com/api/v1/admin/clientes/cli_ID_DEL_CLIENTE
@@ -92,7 +104,7 @@ curl -X PATCH \
 
 ```bash
 curl -X PATCH \
-  -H "Authorization: Bearer adm_minsa_L9m2P7xQ4rT8vN3sK6dF1hW5" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"dailyCredits\":100}" \
   https://intranet-portalwebminsa.onrender.com/api/v1/admin/clientes/cli_ID_DEL_CLIENTE
@@ -104,7 +116,7 @@ Poner saldo exacto:
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer adm_minsa_L9m2P7xQ4rT8vN3sK6dF1hW5" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"amount\":50,\"mode\":\"set\"}" \
   https://intranet-portalwebminsa.onrender.com/api/v1/admin/clientes/cli_ID_DEL_CLIENTE/recargar
@@ -114,7 +126,7 @@ Sumar creditos:
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer adm_minsa_L9m2P7xQ4rT8vN3sK6dF1hW5" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"amount\":10,\"mode\":\"add\"}" \
   https://intranet-portalwebminsa.onrender.com/api/v1/admin/clientes/cli_ID_DEL_CLIENTE/recargar
@@ -124,7 +136,7 @@ curl -X POST \
 
 ```bash
 curl \
-  -H "Authorization: Bearer adm_minsa_L9m2P7xQ4rT8vN3sK6dF1hW5" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   "https://intranet-portalwebminsa.onrender.com/api/v1/admin/uso?limit=50"
 ```
 
@@ -132,34 +144,23 @@ curl \
 
 ```bash
 curl \
-  -H "Authorization: Bearer sk_live_DEL_CLIENTE" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   https://intranet-portalwebminsa.onrender.com/api/v1/saldo
 ```
 
-## Cliente: descontar 1 credito de prueba
+## Cliente: consumir un credito
+
+Usa un endpoint comercial real:
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer sk_live_DEL_CLIENTE" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{\"dni\":\"75481714\",\"tipo\":\"prueba\"}" \
-  https://intranet-portalwebminsa.onrender.com/api/v1/consulta-demo
+  -d "{\"dni\":\"75481714\"}" \
+  https://intranet-portalwebminsa.onrender.com/api/v1/pacientes
 ```
 
-Respuesta:
-
-```json
-{
-  "ok": true,
-  "tipo": "consulta_demo",
-  "mensaje": "Credito descontado correctamente. Endpoint demo para integracion autorizada.",
-  "entrada": {
-    "dni": "75481714",
-    "tipo": "prueba"
-  },
-  "creditos_restantes": 49
-}
-```
+Consulta `/api/v1/saldo` antes y despues para confirmar que el consumo se persistio en PostgreSQL.
 
 ## Notas
 
