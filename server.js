@@ -13,6 +13,19 @@ const port = Number(process.env.PORT || 10000);
 const medicalApiBaseUrl = (process.env.MEDICAL_API_BASE_URL || 'https://intranet-api.alisadata.lat').replace(/\/$/, '');
 const botFilesBaseUrl = (process.env.BOT_FILES_BASE_URL || 'https://intranet-files.alisadata.lat').replace(/\/$/, '');
 const verificationBaseUrl = (process.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
+
+const registerVerificationDocument = async (record) => {
+  const response = await fetch(`${verificationBaseUrl}/api/documentos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(record),
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+};
 const apiSharedKey = process.env.API_SHARED_KEY || '';
 const apiUsageLogPath = process.env.API_USAGE_LOG_PATH || join(__dirname, 'data', 'api-usage.log');
 const defaultMedicalProfessional = 'RUZ VIVAS, NILIBETH LORIANNY';
@@ -346,6 +359,16 @@ const handleDocumentRoute = async (req, res, url, startedAt) => {
   } catch {
     apiLog(req, 500, startedAt, { error: 'DOCUMENT_GENERATION_FAILED', documento: documentInput.selectedDoc.id });
     return sendJson(res, 500, apiFail('DOCUMENT_GENERATION_FAILED', 'No se pudo generar el documento solicitado'));
+  }
+
+  try {
+    await registerVerificationDocument(generated.verificationRecord);
+  } catch {
+    apiLog(req, 502, startedAt, { error: 'VERIFICATION_REGISTRATION_FAILED', documento: documentInput.selectedDoc.id });
+    return sendJson(res, 502, apiFail(
+      'VERIFICATION_REGISTRATION_FAILED',
+      'El documento se genero, pero no pudo registrarse en el verificador. Intente nuevamente.',
+    ));
   }
 
   const documentId = `doc_${randomBytes(8).toString('hex')}`;

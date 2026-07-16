@@ -171,15 +171,16 @@ const App = () => {
   };
 
   const registerVerificationDocument = async (record) => {
-    try {
-      await fetch(`${VERIFICATION_BASE_URL}/api/documentos`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(record)
-      });
-    } catch (error) {
-      console.warn('No se pudo registrar el documento en el verificador:', error.message);
+    const response = await fetch(`${VERIFICATION_BASE_URL}/api/documentos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(record)
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      throw new Error(result.error || `El verificador rechazo el documento (HTTP ${response.status})`);
     }
+    return response.json();
   };
 
   const b64toBlob = (b64Data, contentType = '', sliceSize = 512) => {
