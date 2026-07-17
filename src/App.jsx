@@ -4,6 +4,9 @@ import { hospitalesMinsa } from './data/hospitales-minsa';
 import { hospitalesEssalud } from './data/hospitales-essalud';
 import { pnumeRecetas } from './data/pnume-recetas';
 import { saveAs } from 'file-saver';
+import { renderAsync } from 'docx-preview';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { createOfficialDocument } from './lib/documentService';
 import { generateActMed, generateAutogenerado, getTotalQuantity } from './lib/documentFormatters';
 
@@ -36,6 +39,60 @@ const fetchJsonWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
     throw error;
   } finally {
     window.clearTimeout(timeoutId);
+  }
+};
+
+const convertDocxToPdfInBrowser = async (docxBlob) => {
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-10000px';
+  container.style.top = '0';
+  container.style.width = '794px';
+  container.style.background = '#ffffff';
+  document.body.appendChild(container);
+
+  try {
+    await renderAsync(docxBlob, container, undefined, {
+      inWrapper: true,
+      ignoreWidth: false,
+      ignoreHeight: false,
+      renderHeaders: true,
+      renderFooters: true,
+      breakPages: true,
+    });
+    await document.fonts?.ready;
+
+    const pages = Array.from(container.querySelectorAll('.docx-wrapper > section'));
+    if (!pages.length) throw new Error('No se pudo preparar el documento para PDF');
+
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    for (let index = 0; index < pages.length; index += 1) {
+      const canvas = await html2canvas(pages[index], {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const imageRatio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+      const imageWidth = canvas.width * imageRatio;
+      const imageHeight = canvas.height * imageRatio;
+      if (index > 0) pdf.addPage('a4', 'portrait');
+      pdf.addImage(
+        canvas.toDataURL('image/jpeg', 0.95),
+        'JPEG',
+        (pageWidth - imageWidth) / 2,
+        (pageHeight - imageHeight) / 2,
+        imageWidth,
+        imageHeight,
+        undefined,
+        'FAST',
+      );
+    }
+    return pdf.output('blob');
+  } finally {
+    container.remove();
   }
 };
 
@@ -202,19 +259,6 @@ const App = () => {
     return response.json();
   };
 
-  const b64toBlob = (b64Data, contentType = '', sliceSize = 512) => {
-    const byteCharacters = atob(b64Data);
-    const byteArrays = [];
-    for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
-      const slice = byteCharacters.slice(offset, offset + sliceSize);
-      const byteNumbers = new Array(slice.length);
-      for (let i = 0; i < slice.length; i++) byteNumbers[i] = slice.charCodeAt(i);
-      const byteArray = new Uint8Array(byteNumbers);
-      byteArrays.push(byteArray);
-    }
-    return new Blob(byteArrays, { type: contentType });
-  };
-
   const handleSearch = async (e) => {
     e.preventDefault();
     if (dni.length < 8) return;
@@ -291,19 +335,11 @@ const App = () => {
         saveAs(generatedDocx, `${selectedDoc.id.toUpperCase()}_${patient.dni}.docx`);
         setView('success');
       } else {
-        const formDataPayload = new FormData();
-        formDataPayload.append('file', generatedDocx, 'document.docx');
-        const convResponse = await fetch('/bot-api/convert-docx-to-pdf', { method: 'POST', body: formDataPayload });
-        const result = await convResponse.json();
-        if (!convResponse.ok || result.status !== 'success') {
-          throw new Error(result.detail || result.error || 'Fallo en la conversión nativa');
-        }
-        if (result.status === 'success') {
-          await registerVerificationDocument(verificationRecord);
-          setPdfUrl(URL.createObjectURL(b64toBlob(result.pdf_base64, 'application/pdf')));
-          setReceptionSent(false);
-          setView('success');
-        }
+        const generatedPdf = await convertDocxToPdfInBrowser(generatedDocx);
+        await registerVerificationDocument(verificationRecord);
+        setPdfUrl(URL.createObjectURL(generatedPdf));
+        setReceptionSent(false);
+        setView('success');
       }
     } catch (err) { alert('Error: ' + err.message); } finally { setLoading(false); }
   };
