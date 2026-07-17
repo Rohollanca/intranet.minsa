@@ -11,6 +11,7 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const distDir = join(__dirname, 'dist');
 const port = Number(process.env.PORT || 10000);
 const medicalApiBaseUrl = (process.env.MEDICAL_API_BASE_URL || 'https://api.alisadata.lat').replace(/\/$/, '');
+const conversionApiBaseUrl = (process.env.CONVERSION_API_BASE_URL || 'https://intranet-api.alisadata.lat').replace(/\/$/, '');
 const botFilesBaseUrl = (process.env.BOT_FILES_BASE_URL || 'https://intranet-files.alisadata.lat').replace(/\/$/, '');
 const verificationBaseUrl = (process.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
 
@@ -289,7 +290,7 @@ const apiConvertDocxToPdf = async (docxBuffer) => {
   });
   form.append('file', blob, 'document.docx');
 
-  const response = await fetch(`${medicalApiBaseUrl}/convert-docx-to-pdf`, {
+  const response = await fetch(`${conversionApiBaseUrl}/convert-docx-to-pdf`, {
     method: 'POST',
     body: form,
   });
@@ -492,6 +493,10 @@ POST /api/v1/documentos/generar</pre></body></html>`);
 
   if (req.url.startsWith('/api/v1/')) {
     return handleApiV1(req, res);
+  }
+
+  if (req.url.startsWith('/bot-api/convert-docx-to-pdf')) {
+    return proxyRequest(req, res, conversionApiBaseUrl, /^\/bot-api/);
   }
 
   if (req.url.startsWith('/bot-api')) {

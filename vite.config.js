@@ -9,6 +9,12 @@ export default defineConfig({
   ],
   server: {
     proxy: {
+      '/bot-api/convert-docx-to-pdf': {
+        target: 'https://intranet-api.alisadata.lat',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/bot-api/, ''),
+      },
       '/bot-api': {
         target: 'https://api.alisadata.lat',
         changeOrigin: true,
