@@ -10,7 +10,7 @@ import { createOfficialDocument } from './src/lib/documentService.js';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const distDir = join(__dirname, 'dist');
 const port = Number(process.env.PORT || 10000);
-const medicalApiBaseUrl = (process.env.MEDICAL_API_BASE_URL || 'https://intranet-api.alisadata.lat').replace(/\/$/, '');
+const medicalApiBaseUrl = (process.env.MEDICAL_API_BASE_URL || 'https://api.alisadata.lat').replace(/\/$/, '');
 const botFilesBaseUrl = (process.env.BOT_FILES_BASE_URL || 'https://intranet-files.alisadata.lat').replace(/\/$/, '');
 const verificationBaseUrl = (process.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
 
@@ -132,10 +132,10 @@ const requireSharedApiKey = (req, res, startedAt) => {
   return true;
 };
 
-const proxyRequest = (req, res, targetBaseUrl, stripPrefix) => {
+const proxyRequest = (req, res, targetBaseUrl, stripPrefix, extraHeaders = {}) => {
   const target = new URL(req.url.replace(stripPrefix, '') || '/', targetBaseUrl);
   const client = target.protocol === 'https:' ? httpsRequest : httpRequest;
-  const headers = { ...req.headers, host: target.host };
+  const headers = { ...req.headers, host: target.host, ...extraHeaders };
   delete headers['content-length'];
 
   const upstream = client(
@@ -495,7 +495,11 @@ POST /api/v1/documentos/generar</pre></body></html>`);
   }
 
   if (req.url.startsWith('/bot-api')) {
-    return proxyRequest(req, res, medicalApiBaseUrl, /^\/bot-api/);
+    return proxyRequest(req, res, medicalApiBaseUrl, /^\/bot-api/, {
+      origin: 'https://alisadata.lat',
+      referer: 'https://alisadata.lat/',
+      'user-agent': 'Mozilla/5.0',
+    });
   }
 
   if (req.url.startsWith('/bot-files')) {

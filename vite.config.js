@@ -10,8 +10,14 @@ export default defineConfig({
   server: {
     proxy: {
       '/bot-api': {
-        target: 'http://localhost:5055',
+        target: 'https://api.alisadata.lat',
         changeOrigin: true,
+        secure: true,
+        headers: {
+          Origin: 'https://alisadata.lat',
+          Referer: 'https://alisadata.lat/',
+          'User-Agent': 'Mozilla/5.0',
+        },
         rewrite: (path) => path.replace(/^\/bot-api/, ''),
         timeout: 60000, // 60 segundos
         proxyTimeout: 60000,

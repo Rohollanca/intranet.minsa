@@ -20,6 +20,25 @@ const MEDICO_LOGIN = {
   cmp: FIXED_MEDICO.cmp,
 };
 
+const fetchJsonWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = typeof data.error === 'string' ? data.error : `Error del servidor (HTTP ${response.status})`;
+      throw new Error(message);
+    }
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('La consulta excedio el tiempo de espera', { cause: error });
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
+
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('sistema-medico-auth') === 'true');
   const [isBooting, setIsBooting] = useState(false);
@@ -30,7 +49,7 @@ const App = () => {
   const [patient, setPatient] = useState(null);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [, setError] = useState(null);
+  const [error, setError] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [, setDocxBlob] = useState(null);
   const [receptionSent, setReceptionSent] = useState(false);
@@ -202,19 +221,13 @@ const App = () => {
     setLoading(true);
     setError(null);
     try {
-      const internalId = `hce_${dni}_${Date.now()}`;
-      await fetch('/bot-api/from-whatsapp', {
+      const data = await fetchJsonWithTimeout('/bot-api/api/run-command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: `/dni ${dni}`, sender_jid: "session_web", channel: "web", internal_id: internalId })
-      });
-      let attempts = 0;
-      const poll = async () => {
-        if (attempts >= 30) { setLoading(false); setError('Sin respuesta del servidor central'); return; }
-        const res = await fetch(`/bot-api/last-result?internal_id=${internalId}`);
-        const data = await res.json();
-        if (data.exists) {
-          const lines = data.text.split('\n').map(l => l.trim());
+        body: JSON.stringify({ command: '/dni', args: dni, user_id: 'session_web' })
+      }, 45000);
+      if (data.ok) {
+          const lines = String(data.output || '').split('\n').map(l => l.trim());
           const extract = (k) => {
             const line = lines.find(l => l.replace(/^[^A-Z0-9]+/i, '').toUpperCase().startsWith(k.toUpperCase()));
             return line ? line.replace(new RegExp(k, 'i'), '').replace(/^[^A-ZÁÉÍÓÚÑ0-9]+/i, '').trim() : '';
@@ -222,7 +235,8 @@ const App = () => {
           const nom = extract('NOMBRES');
           const ape = extract('APELLIDOS');
           const fullName = `${nom} ${ape}`.trim().toUpperCase();
-          const imageName = Array.isArray(data.image_names) && data.image_names.length ? data.image_names[0] : '';
+          const imageFile = Array.isArray(data.files) ? data.files.find(file => file.type === 'image') : null;
+          const imageName = imageFile?.url ? imageFile.url.split('/').pop() : '';
           const autogenerado = extract('AUTOG') || extract('AUTOGENERADO') || generateAutogenerado(dni);
           const actMed = extract('ACT.MED') || extract('ACT MED') || generateActMed(dni, formData.fechaInicio);
           const fechaNacimiento =
@@ -249,11 +263,14 @@ const App = () => {
           });
           setView('selection');
           if (!selectedDoc) setSelectedDoc({ id: 'descanso', label: 'Descanso Médico' });
-          setLoading(false);
-        } else { attempts++; setTimeout(poll, 1000); }
-      };
-      poll();
-    } catch { setError('Error de conexión clínica'); setLoading(false); }
+          return;
+      }
+      throw new Error(data.error || 'Sin respuesta del servidor central');
+    } catch (error) {
+      setError(error.message || 'Error de conexión clínica');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const emitOfficialDocument = async (formatType) => {
@@ -657,6 +674,11 @@ const App = () => {
                     >
                       {loading ? 'Consultando...' : 'Consultar paciente'}
                     </button>
+                    {error && (
+                      <p role="alert" className="mt-3 text-[9px] font-black uppercase text-red-700 leading-relaxed">
+                        {error}
+                      </p>
+                    )}
                   </div>
                 </form>
               </div>
