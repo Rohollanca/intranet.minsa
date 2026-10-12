@@ -78,6 +78,8 @@ export const buildDocumentPayload = ({
     dni: patient.dni,
     fecha: formatDate(formData.fechaInicio),
     fechaIso: formData.fechaInicio,
+    fechaFin: fechaFin,
+    dias: formData.dias,
     medico: formData.profesional,
     cmp: formData.cmp,
     diagnostico: formData.cie?.descripcionCIE?.toUpperCase() || '',

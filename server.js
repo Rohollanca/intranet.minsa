@@ -507,12 +507,23 @@ const handleVerificationRoutes = async (req, res, url) => {
   if (req.method === 'GET' && (url.pathname === '/verificar' || url.pathname.startsWith('/verificar/'))) {
     const codigo = String(url.searchParams.get('codigo') || (url.pathname.startsWith('/verificar/') ? url.pathname.slice('/verificar/'.length) : '')).trim().toUpperCase();
     const record = readVerificationDocuments().find(item => String(item.codigo || '').toUpperCase() === codigo);
-    const title = record ? 'Documento verificado' : 'Verificación de documento';
+    const title = record ? 'Documento válido y auténtico' : 'Verificación de documento';
+    const rows = record ? [
+      ['Documento', record.documento || record.documentoId || 'Documento médico'],
+      ['Paciente', record.paciente || record.nombre || ''],
+      ['DNI', record.dni || ''],
+      ['Código', record.codigo || ''],
+      ['Diagnóstico', record.diagnostico || ''],
+      ['Fecha Emisión', record.fecha || record.registradoEn || ''],
+      ['Inicio Descanso', record.fecha || ''],
+      ['Fin Descanso', record.fechaFin || ''],
+      ['Total Días', record.dias || ''],
+    ].map(([label, value]) => `<div class="row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('') : '';
     const content = record
-      ? `<h1>Documento verificado</h1><p class="ok">El documento fue registrado en el sistema institucional.</p><dl><dt>Código</dt><dd>${escapeHtml(record.codigo)}</dd><dt>Documento</dt><dd>${escapeHtml(record.documento || record.documentoId || 'Documento médico')}</dd><dt>Paciente</dt><dd>${escapeHtml(record.paciente || record.nombre || '')}</dd><dt>Fecha</dt><dd>${escapeHtml(record.fecha || record.registradoEn || '')}</dd></dl>`
-      : `<h1>Documento no encontrado</h1><p>El código no existe o todavía no ha sido registrado.</p>`;
+      ? `<div class="check">✓</div><h1>Documento Válido y Auténtico</h1><p class="subtitle">Verificado en la base de datos de MINSA.</p><section>${rows}</section><a class="new" href="/verificar">Nueva Consulta</a>`
+      : `<div class="check bad">!</div><h1>Documento no encontrado</h1><p class="subtitle">El código no existe o todavía no ha sido registrado.</p><a class="new" href="/verificar">Nueva Consulta</a>`;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    return res.end(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:Arial,sans-serif;background:#f4f7fa;color:#17324d;margin:0;padding:40px}.card{max-width:620px;margin:auto;background:white;border:1px solid #c7d8e5;border-radius:12px;padding:30px;box-shadow:0 10px 30px #17324d18}h1{color:#005b96}.ok{color:#087f5b;font-weight:700}dt{font-weight:700;margin-top:14px}dd{margin:4px 0 0}</style></head><body><main class="card"><strong>MINISTERIO DE SALUD</strong>${content}</main></body></html>`);
+    return res.end(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;background:#fff;color:#333;margin:0;padding:34px 33px;min-height:100vh}.card{max-width:600px;margin:auto;background:#fff}.check{width:45px;height:45px;border-radius:50%;background:#4caf63;color:#fff;font-size:34px;line-height:45px;text-align:center;font-weight:700;margin:135px 0 14px}.check.bad{background:#d9534f}h1{font-size:27px;line-height:1.2;margin:0 0 8px;color:#222}.subtitle{font-size:21px;margin:0 0 24px;color:#444}section{border-top:1px solid #e5e5e5}.row{display:flex;justify-content:space-between;gap:24px;padding:19px 0;border-bottom:1px solid #e5e5e5;font-size:20px;line-height:1.3}.row span{color:#666}.row strong{text-align:right;color:#222;max-width:68%}.new{display:block;text-align:center;text-decoration:none;color:#285b9d;border:1px solid #285b9d;border-radius:8px;padding:14px;margin-top:32px;font-size:21px}@media(max-width:480px){body{padding:32px 33px}.check{margin-top:135px}h1{font-size:26px}.subtitle{font-size:20px}.row{font-size:19px}.row strong{max-width:64%}}</style></head><body><main class="card">${content}</main></body></html>`);
   }
   return false;
 };
