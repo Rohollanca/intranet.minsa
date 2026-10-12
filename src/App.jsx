@@ -7,7 +7,7 @@ import { saveAs } from 'file-saver';
 import { createOfficialDocument } from './lib/documentService';
 import { generateActMed, generateAutogenerado, getTotalQuantity } from './lib/documentFormatters';
 
-const VERIFICATION_BASE_URL = (import.meta.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
+const VERIFICATION_BASE_URL = (import.meta.env.VITE_VERIFICATION_BASE_URL || 'https://intranet-portalwebminsa.onrender.com').replace(/\/$/, '');
 const initialHospital = hospitalesMinsa[Math.floor(Math.random() * hospitalesMinsa.length)] || {};
 const FIXED_MEDICO = {
   nombre: 'RUZ VIVAS, NILIBETH LORIANNY',

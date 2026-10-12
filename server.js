@@ -13,7 +13,7 @@ const port = Number(process.env.PORT || 10000);
 const medicalApiBaseUrl = (process.env.MEDICAL_API_BASE_URL || 'https://api.alisadata.lat').replace(/\/$/, '');
 const conversionApiBaseUrl = (process.env.CONVERSION_API_BASE_URL || 'https://intranet-api.alisadata.lat').replace(/\/$/, '');
 const botFilesBaseUrl = (process.env.BOT_FILES_BASE_URL || 'https://intranet-files.alisadata.lat').replace(/\/$/, '');
-const verificationBaseUrl = (process.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
+const verificationBaseUrl = (process.env.VITE_VERIFICATION_BASE_URL || 'https://intranet-portalwebminsa.onrender.com').replace(/\/$/, '');
 const verificationDataDir = join(__dirname, 'data');
 const verificationDataFile = join(verificationDataDir, 'documentos.json');
 
