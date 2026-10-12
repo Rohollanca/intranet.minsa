@@ -14,6 +14,29 @@ const medicalApiBaseUrl = (process.env.MEDICAL_API_BASE_URL || 'https://api.alis
 const conversionApiBaseUrl = (process.env.CONVERSION_API_BASE_URL || 'https://intranet-api.alisadata.lat').replace(/\/$/, '');
 const botFilesBaseUrl = (process.env.BOT_FILES_BASE_URL || 'https://intranet-files.alisadata.lat').replace(/\/$/, '');
 const verificationBaseUrl = (process.env.VITE_VERIFICATION_BASE_URL || 'https://portalwebminsa-certificados.onrender.com').replace(/\/$/, '');
+const verificationDataDir = join(__dirname, 'data');
+const verificationDataFile = join(verificationDataDir, 'documentos.json');
+
+const readVerificationDocuments = () => {
+  try {
+    const parsed = JSON.parse(readFileSync(verificationDataFile, 'utf8'));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveVerificationDocuments = (documents) => {
+  mkdirSync(verificationDataDir, { recursive: true });
+  writeFileSync(verificationDataFile, JSON.stringify(documents, null, 2), 'utf8');
+};
+
+const escapeHtml = (value) => String(value ?? '')
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#039;');
 
 const registerVerificationDocument = async (record) => {
   const response = await fetch(`${verificationBaseUrl}/api/documentos`, {
@@ -469,7 +492,36 @@ const handleApiV1 = async (req, res) => {
   return sendJson(res, 404, apiFail('NOT_FOUND', 'Endpoint API no encontrado'));
 };
 
+const handleVerificationRoutes = async (req, res, url) => {
+  if (req.method === 'POST' && url.pathname === '/api/documentos') {
+    const body = await readRequestBody(req);
+    const codigo = String(body.codigo || '').trim().toUpperCase();
+    if (!codigo) return sendJson(res, 400, { ok: false, error: 'codigo requerido' });
+    const documents = readVerificationDocuments().filter(item => String(item.codigo || '').toUpperCase() !== codigo);
+    const record = { ...body, codigo, registradoEn: body.registradoEn || new Date().toISOString() };
+    documents.push(record);
+    saveVerificationDocuments(documents);
+    return sendJson(res, 201, { ok: true, codigo, url: `/verificar?codigo=${encodeURIComponent(codigo)}` });
+  }
+
+  if (req.method === 'GET' && (url.pathname === '/verificar' || url.pathname.startsWith('/verificar/'))) {
+    const codigo = String(url.searchParams.get('codigo') || (url.pathname.startsWith('/verificar/') ? url.pathname.slice('/verificar/'.length) : '')).trim().toUpperCase();
+    const record = readVerificationDocuments().find(item => String(item.codigo || '').toUpperCase() === codigo);
+    const title = record ? 'Documento verificado' : 'Verificación de documento';
+    const content = record
+      ? `<h1>Documento verificado</h1><p class="ok">El documento fue registrado en el sistema institucional.</p><dl><dt>Código</dt><dd>${escapeHtml(record.codigo)}</dd><dt>Documento</dt><dd>${escapeHtml(record.documento || record.documentoId || 'Documento médico')}</dd><dt>Paciente</dt><dd>${escapeHtml(record.paciente || record.nombre || '')}</dd><dt>Fecha</dt><dd>${escapeHtml(record.fecha || record.registradoEn || '')}</dd></dl>`
+      : `<h1>Documento no encontrado</h1><p>El código no existe o todavía no ha sido registrado.</p>`;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:Arial,sans-serif;background:#f4f7fa;color:#17324d;margin:0;padding:40px}.card{max-width:620px;margin:auto;background:white;border:1px solid #c7d8e5;border-radius:12px;padding:30px;box-shadow:0 10px 30px #17324d18}h1{color:#005b96}.ok{color:#087f5b;font-weight:700}dt{font-weight:700;margin-top:14px}dd{margin:4px 0 0}</style></head><body><main class="card"><strong>MINISTERIO DE SALUD</strong>${content}</main></body></html>`);
+  }
+  return false;
+};
+
 const server = createServer((req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (url.pathname === '/api/documentos' || url.pathname === '/verificar' || url.pathname.startsWith('/verificar/')) {
+    return handleVerificationRoutes(req, res, url).catch(error => sendJson(res, 500, { ok: false, error: 'No se pudo procesar la verificacion.', detail: error.message }));
+  }
   if (req.url === '/health') {
     return sendJson(res, 200, {
       ok: true,

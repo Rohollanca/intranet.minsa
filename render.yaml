@@ -10,7 +10,7 @@ services:
       - key: NODE_VERSION
         value: 22.22.0
       - key: VITE_VERIFICATION_BASE_URL
-        value: https://portalwebminsa-certificados.onrender.com
+        value: https://intranet-portalwebminsa.onrender.com
       - key: API_SHARED_KEY
         sync: false
       - key: MEDICAL_API_BASE_URL
