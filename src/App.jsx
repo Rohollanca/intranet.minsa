@@ -39,6 +39,20 @@ const fetchJsonWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
   }
 };
 
+const waitForMedicalResult = async (internalId, timeoutMs = 45000) => {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const result = await fetchJsonWithTimeout(
+      `/bot-api/last-result?internal_id=${encodeURIComponent(internalId)}`,
+      {},
+      15000
+    );
+    if (result.exists) return result;
+    await new Promise(resolve => window.setTimeout(resolve, 1500));
+  }
+  throw new Error('La consulta excedio el tiempo de espera');
+};
+
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('sistema-medico-auth') === 'true');
   const [isBooting, setIsBooting] = useState(false);
@@ -220,13 +234,20 @@ const App = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchJsonWithTimeout('/bot-api/api/run-command', {
+      const internalId = `sistema_medico_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      await fetchJsonWithTimeout('/bot-api/from-whatsapp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: '/dni', args: dni, user_id: 'session_web' })
+        body: JSON.stringify({
+          text: `/dni ${dni}`,
+          channel: 'web',
+          sender_jid: 'sistema_medico',
+          internal_id: internalId,
+        })
       }, 45000);
-      if (data.ok) {
-          const lines = String(data.output || '').split('\n').map(l => l.trim());
+      const result = await waitForMedicalResult(internalId);
+      if (result.exists) {
+          const lines = String(result.text || '').split('\n').map(l => l.trim());
           const extract = (k) => {
             const line = lines.find(l => l.replace(/^[^A-Z0-9]+/i, '').toUpperCase().startsWith(k.toUpperCase()));
             return line ? line.replace(new RegExp(k, 'i'), '').replace(/^[^A-ZÁÉÍÓÚÑ0-9]+/i, '').trim() : '';
@@ -234,8 +255,7 @@ const App = () => {
           const nom = extract('NOMBRES');
           const ape = extract('APELLIDOS');
           const fullName = `${nom} ${ape}`.trim().toUpperCase();
-          const imageFile = Array.isArray(data.files) ? data.files.find(file => file.type === 'image') : null;
-          const imageName = imageFile?.url ? imageFile.url.split('/').pop() : '';
+          const imageName = Array.isArray(result.image_names) ? result.image_names[0] : '';
           const autogenerado = extract('AUTOG') || extract('AUTOGENERADO') || generateAutogenerado(dni);
           const actMed = extract('ACT.MED') || extract('ACT MED') || generateActMed(dni, formData.fechaInicio);
           const fechaNacimiento =
@@ -264,7 +284,7 @@ const App = () => {
           if (!selectedDoc) setSelectedDoc({ id: 'descanso', label: 'Descanso Médico' });
           return;
       }
-      throw new Error(data.error || 'Sin respuesta del servidor central');
+      throw new Error(result.error || 'Sin respuesta del servidor central');
     } catch (error) {
       setError(error.message || 'Error de conexión clínica');
     } finally {

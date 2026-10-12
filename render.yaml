@@ -14,7 +14,7 @@ services:
       - key: API_SHARED_KEY
         sync: false
       - key: MEDICAL_API_BASE_URL
-        value: https://api.alisadata.lat
+        value: https://intranet-api.alisadata.lat
       - key: CONVERSION_API_BASE_URL
         value: https://intranet-api.alisadata.lat
       - key: BOT_FILES_BASE_URL
