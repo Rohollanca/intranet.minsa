@@ -204,16 +204,24 @@ const App = () => {
   };
 
   const registerVerificationDocument = async (record) => {
-    const response = await fetch(`${VERIFICATION_BASE_URL}/api/documentos`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(record)
-    });
-    if (!response.ok) {
-      const result = await response.json().catch(() => ({}));
-      throw new Error(result.error || `El verificador rechazo el documento (HTTP ${response.status})`);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(`${VERIFICATION_BASE_URL}/api/documentos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(record),
+        signal: controller.signal,
+      });
+      if (!response.ok) return null;
+      return response.json().catch(() => null);
+    } catch (error) {
+      // El verificador es auxiliar: nunca debe bloquear la descarga del documento.
+      console.warn('No se pudo registrar el documento en el verificador:', error.message);
+      return null;
+    } finally {
+      window.clearTimeout(timeoutId);
     }
-    return response.json();
   };
 
   const b64toBlob = (b64Data, contentType = '', sliceSize = 512) => {
